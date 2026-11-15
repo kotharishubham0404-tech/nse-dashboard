@@ -5,279 +5,226 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
-import urllib.request
-import io
 
 st.set_page_config(page_title="NSE & BSE 360° Stock Analyzer", layout="wide")
 
 # ==============================================================================
-# 1. VERIFIED NSE & BSE INDEX CATALOG
+# 1. VERIFIED NSE & BSE STOCK CATALOG (STOCKS FIRST SO DATA LOADS IMMEDIATELY)
 # ==============================================================================
 
 COMPANY_NAMES = {
-    "^NSEI": "NSE Nifty 50 Index", "^BSESN": "BSE Sensex 30 Index", "^NSEBANK": "NSE Nifty Bank Index",
-    "^CNXIT": "NSE Nifty IT Index", "^CNXPHARMA": "NSE Nifty Pharma Index", "^CNXAUTO": "NSE Nifty Auto Index",
-    "^CNXFMCG": "NSE Nifty FMCG Index", "^CNXMETAL": "NSE Nifty Metal Index", "^CNXPSUBANK": "NSE Nifty PSU Bank Index",
+    "RELIANCE": "Reliance Industries Ltd", "TCS": "Tata Consultancy Services Ltd",
     "HDFCBANK": "HDFC Bank Ltd", "ICICIBANK": "ICICI Bank Ltd", "SBIN": "State Bank of India",
+    "INFY": "Infosys Ltd", "BHARTIARTL": "Bharti Airtel Ltd", "ITC": "ITC Ltd",
+    "LT": "Larsen & Toubro Ltd", "TATAMOTORS": "Tata Motors Ltd", "BAJFINANCE": "Bajaj Finance Ltd",
+    "HAL": "Hindustan Aeronautics Ltd", "BEL": "Bharat Electronics Ltd", "TRENT": "Trent Ltd",
+    "SUNPHARMA": "Sun Pharmaceutical Industries", "MARUTI": "Maruti Suzuki India Ltd",
+    "M&M": "Mahindra & Mahindra Ltd", "NTPC": "NTPC Ltd", "POWERGRID": "Power Grid Corp of India",
+    "ONGC": "Oil & Natural Gas Corp", "COALINDIA": "Coal India Ltd", "TATASTEEL": "Tata Steel Ltd",
+    "JSWSTEEL": "JSW Steel Ltd", "HINDALCO": "Hindalco Industries Ltd", "VEDL": "Vedanta Ltd",
     "KOTAKBANK": "Kotak Mahindra Bank Ltd", "AXISBANK": "Axis Bank Ltd", "INDUSINDBK": "IndusInd Bank Ltd",
-    "BANKBARODA": "Bank of Baroda", "PNB": "Punjab National Bank", "FEDERALBNK": "Federal Bank Ltd",
-    "IDFCFIRSTB": "IDFC First Bank Ltd", "AUBANK": "AU Small Finance Bank Ltd", "BANDHANBNK": "Bandhan Bank Ltd",
-    "CANBK": "Canara Bank", "UNIONBANK": "Union Bank of India", "INDIANB": "Indian Bank",
-    "RELIANCE": "Reliance Industries Ltd", "TCS": "Tata Consultancy Services Ltd", "INFY": "Infosys Ltd",
-    "BHARTIARTL": "Bharti Airtel Ltd", "ITC": "ITC Ltd", "LT": "Larsen & Toubro Ltd",
-    "HCLTECH": "HCL Technologies Ltd", "BAJFINANCE": "Bajaj Finance Ltd", "MARUTI": "Maruti Suzuki India Ltd",
-    "SUNPHARMA": "Sun Pharmaceutical Industries", "TATAMOTORS": "Tata Motors Ltd", "ULTRACEMCO": "UltraTech Cement Ltd",
-    "NTPC": "NTPC Ltd", "M&M": "Mahindra & Mahindra Ltd", "TITAN": "Titan Company Ltd",
-    "POWERGRID": "Power Grid Corp of India", "ASIANPAINT": "Asian Paints Ltd", "BAJAJFINSV": "Bajaj Finserv Ltd",
-    "NESTLEIND": "Nestle India Ltd", "ADANIPORTS": "Adani Ports & SEZ Ltd", "TATASTEEL": "Tata Steel Ltd",
-    "JSWSTEEL": "JSW Steel Ltd", "TECHM": "Tech Mahindra Ltd", "HINDUNILVR": "Hindustan Unilever Ltd",
-    "ADANIENT": "Adani Enterprises Ltd", "APOLLOHOSP": "Apollo Hospitals Enterprise", "BAJAJ-AUTO": "Bajaj Auto Ltd",
-    "BEL": "Bharat Electronics Ltd", "BPCL": "Bharat Petroleum Corp", "BRITANNIA": "Britannia Industries Ltd",
-    "CIPLA": "Cipla Ltd", "COALINDIA": "Coal India Ltd", "DRREDDY": "Dr. Reddy's Laboratories",
-    "EICHERMOT": "Eicher Motors Ltd", "GRASIM": "Grasim Industries Ltd", "HDFCLIFE": "HDFC Life Insurance",
-    "HEROMOTOCO": "Hero MotoCorp Ltd", "HINDALCO": "Hindalco Industries Ltd", "ONGC": "Oil & Natural Gas Corp",
-    "SBILIFE": "SBI Life Insurance", "SHRIRAMFIN": "Shriram Finance Ltd", "TATACONSUM": "Tata Consumer Products",
-    "TRENT": "Trent Ltd", "WIPRO": "Wipro Ltd", "HAL": "Hindustan Aeronautics Ltd",
-    "DLF": "DLF Ltd", "ZOMATO": "Zomato Ltd", "JIOFIN": "Jio Financial Services",
+    "BANKBARODA": "Bank of Baroda", "PNB": "Punjab National Bank", "CANBK": "Canara Bank",
+    "FEDERALBNK": "Federal Bank Ltd", "IDFCFIRSTB": "IDFC First Bank Ltd", "AUBANK": "AU Small Finance Bank",
+    "BANDHANBNK": "Bandhan Bank Ltd", "UNIONBANK": "Union Bank of India", "INDIANB": "Indian Bank",
+    "HCLTECH": "HCL Technologies Ltd", "WIPRO": "Wipro Ltd", "TECHM": "Tech Mahindra Ltd",
+    "LTIM": "LTIMindtree Ltd", "PERSISTENT": "Persistent Systems Ltd", "COFORGE": "Coforge Ltd",
+    "KPITTECH": "KPIT Technologies Ltd", "TATAELXSI": "Tata Elxsi Ltd", "DIXON": "Dixon Technologies",
+    "ULTRACEMCO": "UltraTech Cement Ltd", "AMBUJACEM": "Ambuja Cements Ltd", "GRASIM": "Grasim Industries",
+    "TITAN": "Titan Company Ltd", "ASIANPAINT": "Asian Paints Ltd", "HINDUNILVR": "Hindustan Unilever Ltd",
+    "NESTLEIND": "Nestle India Ltd", "BRITANNIA": "Britannia Industries", "TATACONSUM": "Tata Consumer Products",
+    "VBL": "Varun Beverages Ltd", "ZOMATO": "Zomato Ltd", "DMART": "Avenue Supermarts (DMart)",
+    "DLF": "DLF Ltd", "LODHA": "Macrotech Developers (Lodha)", "GODREJPROP": "Godrej Properties Ltd",
+    "OBEROIRLTY": "Oberoi Realty Ltd", "PRESTIGE": "Prestige Estates Projects",
+    "ADANIENT": "Adani Enterprises Ltd", "ADANIPORTS": "Adani Ports & SEZ Ltd", "ADANIGREEN": "Adani Green Energy",
+    "ADANIPOWER": "Adani Power Ltd", "TATAPOWER": "Tata Power Co Ltd", "JSWENERGY": "JSW Energy Ltd",
     "PFC": "Power Finance Corporation", "RECLTD": "REC Ltd", "IRFC": "Indian Railway Finance Corp",
     "RVNL": "Rail Vikas Nigam Ltd", "MAZDOCK": "Mazagon Dock Shipbuilders", "BDL": "Bharat Dynamics Ltd",
-    "DIXON": "Dixon Technologies", "POLYCAB": "Polycab India Ltd", "PERSISTENT": "Persistent Systems Ltd",
-    "SUZLON": "Suzlon Energy Ltd", "BSE": "BSE Ltd", "CDSL": "Central Depository Services", "ANGELONE": "Angel One Ltd"
+    "COCHINSHIP": "Cochin Shipyard Ltd", "BHEL": "Bharat Heavy Electricals", "SIEMENS": "Siemens Ltd",
+    "ABB": "ABB India Ltd", "CGPOWER": "CG Power & Industrial Solutions", "CUMMINSIND": "Cummins India Ltd",
+    "POLYCAB": "Polycab India Ltd", "KEI": "KEI Industries Ltd", "SUZLON": "Suzlon Energy Ltd",
+    "BAJAJ-AUTO": "Bajaj Auto Ltd", "EICHERMOT": "Eicher Motors Ltd", "HEROMOTOCO": "Hero MotoCorp Ltd",
+    "TVSMOTOR": "TVS Motor Company", "ASHOKLEY": "Ashok Leyland Ltd", "BHARATFORG": "Bharat Forge Ltd",
+    "MRF": "MRF Ltd", "APOLLOHOSP": "Apollo Hospitals Enterprise", "MAXHEALTH": "Max Healthcare Institute",
+    "DRREDDY": "Dr. Reddy's Laboratories", "CIPLA": "Cipla Ltd", "DIVISLAB": "Divi's Laboratories",
+    "LUPIN": "Lupin Ltd", "ZYDUSLIFE": "Zydus Lifesciences", "BSE": "BSE Ltd", "MCX": "Multi Commodity Exchange",
+    "CDSL": "Central Depository Services", "ANGELONE": "Angel One Ltd", "JIOFIN": "Jio Financial Services",
+    "CHOLAFIN": "Cholamandalam Investment", "SHRIRAMFIN": "Shriram Finance Ltd", "BAJAJFINSV": "Bajaj Finserv Ltd",
+    "BPCL": "Bharat Petroleum Corp", "IOC": "Indian Oil Corporation", "GAIL": "GAIL (India) Ltd",
+    "NMDC": "NMDC Ltd", "SAIL": "Steel Authority of India", "NATIONALUM": "National Aluminium Co",
+    "^NSEI": "NSE Nifty 50 Index", "^BSESN": "BSE Sensex 30 Index", "^NSEBANK": "NSE Nifty Bank Index",
+    "^CNXIT": "NSE Nifty IT Index", "^CNXPHARMA": "NSE Nifty Pharma Index", "^CNXAUTO": "NSE Nifty Auto Index"
 }
 
 INDEX_GROUPS = {
-    "🌐 All NSE & BSE Listed Stocks (Full Search)": "ALL",
-    "📊 Benchmark Indices (Nifty 50, Sensex, Bank Nifty)": ["^NSEI", "^BSESN", "^NSEBANK", "^CNXIT", "^CNXPHARMA", "^CNXAUTO", "^CNXFMCG", "^CNXMETAL", "^CNXPSUBANK"],
-    "🏦 NIFTY BANK (12 Stocks)": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "BANKBARODA", "PNB", "FEDERALBNK", "IDFCFIRSTB", "AUBANK", "BANDHANBNK"],
-    "🏛️ NIFTY PSU BANK (12 Stocks)": ["SBIN", "BANKBARODA", "PNB", "CANBK", "UNIONBANK", "INDIANB", "BANKINDIA", "MAHABANK", "IOB", "CENTRALBK", "UCOBANK", "PSB"],
+    "🇮🇳 NSE NIFTY 50 (50 Stocks)": ["RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "SBIN", "INFY", "BHARTIARTL", "ITC", "LT", "TATAMOTORS", "BAJFINANCE", "SUNPHARMA", "MARUTI", "M&M", "NTPC", "POWERGRID", "ONGC", "COALINDIA", "TATASTEEL", "JSWSTEEL", "HINDALCO", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "HCLTECH", "WIPRO", "TECHM", "LTIM", "ULTRACEMCO", "GRASIM", "TITAN", "ASIANPAINT", "HINDUNILVR", "NESTLEIND", "BRITANNIA", "TATACONSUM", "ADANIENT", "ADANIPORTS", "BAJAJ-AUTO", "EICHERMOT", "HEROMOTOCO", "APOLLOHOSP", "DRREDDY", "CIPLA", "DIVISLAB", "BEL", "BPCL", "TRENT", "SHRIRAMFIN", "BAJAJFINSV"],
     "🇮🇳 BSE SENSEX 30 (30 Stocks)": ["RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "BHARTIARTL", "SBIN", "ITC", "LT", "HCLTECH", "AXISBANK", "BAJFINANCE", "MARUTI", "SUNPHARMA", "TATAMOTORS", "KOTAKBANK", "ULTRACEMCO", "NTPC", "M&M", "TITAN", "POWERGRID", "ASIANPAINT", "BAJAJFINSV", "NESTLEIND", "INDUSINDBK", "ADANIPORTS", "TATASTEEL", "JSWSTEEL", "TECHM", "HINDUNILVR"],
-    "🇮🇳 NSE NIFTY 50 (50 Stocks)": ["ADANIENT", "ADANIPORTS", "APOLLOHOSP", "ASIANPAINT", "AXISBANK", "BAJAJ-AUTO", "BAJFINANCE", "BAJAJFINSV", "BEL", "BPCL", "BHARTIARTL", "BRITANNIA", "CIPLA", "COALINDIA", "DRREDDY", "EICHERMOT", "GRASIM", "HCLTECH", "HDFCBANK", "HDFCLIFE", "HEROMOTOCO", "HINDALCO", "HINDUNILVR", "ICICIBANK", "INDUSINDBK", "INFY", "ITC", "JSWSTEEL", "KOTAKBANK", "LT", "M&M", "MARUTI", "NESTLEIND", "NTPC", "ONGC", "POWERGRID", "RELIANCE", "SBILIFE", "SHRIRAMFIN", "SBIN", "SUNPHARMA", "TCS", "TATACONSUM", "TATAMOTORS", "TATASTEEL", "TECHM", "TITAN", "TRENT", "ULTRACEMCO", "WIPRO"],
-    "🇮🇳 NSE NIFTY NEXT 50 (50 Stocks)": ["ABB", "ADANIENSOL", "ADANIGREEN", "ADANIPOWER", "ATGL", "AMBUJACEM", "DMART", "BAJAJHLDNG", "BANKBARODA", "BHEL", "BOSCHLTD", "CANBK", "CHOLAFIN", "COLPAL", "DLF", "DABUR", "DIVISLAB", "GAIL", "GODREJCP", "HAL", "HAVELLS", "HINDZINC", "ICICIGI", "ICICIPRULI", "IOC", "IRCTC", "IRFC", "JINDALSTEL", "JIOFIN", "JSWENERGY", "LICI", "LODHA", "LTIM", "MARICO", "MOTHERSON", "NAUKRI", "NHPC", "PIDILITIND", "PFC", "PNB", "RECLTD", "SIEMENS", "SRF", "SHREECEM", "TATAPOWER", "TORNTPHARM", "TVSMOTOR", "UNITDSPR", "VBL", "VEDL", "ZOMATO", "ZYDUSLIFE"],
-    "💻 NIFTY IT (17 Stocks)": ["TCS", "INFY", "HCLTECH", "WIPRO", "TECHM", "LTIM", "PERSISTENT", "OFSS", "COFORGE", "MPHASIS", "LTTS", "TATAELXSI", "KPITTECH", "CYIENT", "ZENSARTECH", "SONATSOFTW", "BIRLASOFT"],
-    "🚗 NIFTY AUTO (17 Stocks)": ["TATAMOTORS", "M&M", "MARUTI", "BAJAJ-AUTO", "EICHERMOT", "HEROMOTOCO", "TVSMOTOR", "ASHOKLEY", "BHARATFORG", "MOTHERSON", "BOSCHLTD", "MRF", "BALKRISIND", "APOLLOTYRE", "EXIDEIND", "SONACOMS", "TIINDIA"],
-    "💊 NIFTY PHARMA & HEALTHCARE (18 Stocks)": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "APOLLOHOSP", "LUPIN", "AUROPHARMA", "TORNTPHARM", "ZYDUSLIFE", "ALKEM", "MANKIND", "MAXHEALTH", "FORTIS", "BIOCON", "LAURUSLABS", "GLENMARK", "IPCALAB", "SYNGENE"],
-    "🛒 NIFTY FMCG (18 Stocks)": ["ITC", "HINDUNILVR", "NESTLEIND", "VBL", "BRITANNIA", "GODREJCP", "TATACONSUM", "DABUR", "MARICO", "COLPAL", "UNITDSPR", "UBL", "PGHH", "EMAMILTD", "RADICO", "PATANJALI", "JYOTHYLAB", "BIKAJI"],
-    "⛏️ NIFTY METAL (16 Stocks)": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "COALINDIA", "HINDZINC", "JINDALSTEL", "NMDC", "SAIL", "NATIONALUM", "APLAPOLLO", "JSL", "RATNAMANI", "WELCORP", "HINDCOPPER", "MOIL"],
-    "⚡ NIFTY ENERGY, OIL & GAS (21 Stocks)": ["RELIANCE", "NTPC", "ONGC", "POWERGRID", "COALINDIA", "ADANIGREEN", "ADANIPOWER", "TATAPOWER", "IOC", "BPCL", "GAIL", "JSWENERGY", "NHPC", "SJVN", "TORNTPOWER", "CESC", "PETRONET", "OIL", "HPCL", "IGL", "MGL"],
-    "🛡️ NIFTY PSE, DEFENSE & RAILWAYS (21 Stocks)": ["HAL", "BEL", "MAZDOCK", "BDL", "COCHINSHIP", "GRSE", "SOLARINDS", "IRFC", "RVNL", "IRCON", "TITAGARH", "RAILTEL", "RITES", "BEML", "BHEL", "NTPC", "ONGC", "COALINDIA", "POWERGRID", "PFC", "RECLTD"],
-    "🚀 NIFTY MIDCAP & SMALLCAP LEADERS (40 Stocks)": ["DIXON", "POLYCAB", "PERSISTENT", "CUMMINSIND", "CGPOWER", "SUPREMEIND", "ASTRAL", "COFORGE", "VOLTAS", "PAGEIND", "PIIND", "INDHOTEL", "CONCOR", "OBEROIRLTY", "GODREJPROP", "PRESTIGE", "PETRONET", "HPCL", "GMRINFRA", "YESBANK", "TATACOMM", "JUBLFOOD", "MUTHOOTFIN", "SBICARD", "BSE", "MCX", "CDSL", "ANGELONE", "SUZLON", "KAYNES", "DELHIVERY", "PAYTM", "POLICYBZR", "NYKAA", "CAMS", "KFINTECH", "DATAPATTNS", "TEJASNET", "HFCL", "PRAJIND"]
+    "🏦 NIFTY BANK (12 Stocks)": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "BANKBARODA", "PNB", "FEDERALBNK", "IDFCFIRSTB", "AUBANK", "BANDHANBNK"],
+    "🏛️ NIFTY PSU BANK (10 Stocks)": ["SBIN", "BANKBARODA", "PNB", "CANBK", "UNIONBANK", "INDIANB", "IOB", "CENTRALBK", "UCOBANK", "MAHABANK"],
+    "💻 NIFTY IT (12 Stocks)": ["TCS", "INFY", "HCLTECH", "WIPRO", "TECHM", "LTIM", "PERSISTENT", "COFORGE", "KPITTECH", "TATAELXSI", "MPHASIS", "LTTS"],
+    "🚗 NIFTY AUTO (12 Stocks)": ["TATAMOTORS", "M&M", "MARUTI", "BAJAJ-AUTO", "EICHERMOT", "HEROMOTOCO", "TVSMOTOR", "ASHOKLEY", "BHARATFORG", "MRF", "MOTHERSON", "BOSCHLTD"],
+    "💊 NIFTY PHARMA & HEALTHCARE (10 Stocks)": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "APOLLOHOSP", "MAXHEALTH", "LUPIN", "ZYDUSLIFE", "AUROPHARMA", "ALKEM"],
+    "🛒 NIFTY FMCG & CONSUMER (10 Stocks)": ["ITC", "HINDUNILVR", "NESTLEIND", "BRITANNIA", "TATACONSUM", "VBL", "DMART", "ZOMATO", "GODREJCP", "DABUR"],
+    "⛏️ NIFTY METAL (10 Stocks)": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "COALINDIA", "NMDC", "SAIL", "NATIONALUM", "JINDALSTEL", "HINDZINC"],
+    "⚡ NIFTY ENERGY, OIL & POWER (14 Stocks)": ["RELIANCE", "NTPC", "ONGC", "POWERGRID", "COALINDIA", "TATAPOWER", "ADANIGREEN", "ADANIPOWER", "JSWENERGY", "BPCL", "IOC", "GAIL", "PFC", "RECLTD"],
+    "🛡️ NIFTY DEFENSE, RAILWAYS & CAPEX (14 Stocks)": ["HAL", "BEL", "MAZDOCK", "BDL", "COCHINSHIP", "IRFC", "RVNL", "BHEL", "SIEMENS", "ABB", "CGPOWER", "CUMMINSIND", "POLYCAB", "SUZLON"],
+    "🏢 NIFTY REALTY & INFRA (10 Stocks)": ["DLF", "LODHA", "GODREJPROP", "OBEROIRLTY", "PRESTIGE", "LT", "ULTRACEMCO", "AMBUJACEM", "GRASIM", "IRB"],
+    "💰 NIFTY FIN SERVICES & CAPITAL MARKETS (12 Stocks)": ["BAJFINANCE", "BAJAJFINSV", "JIOFIN", "CHOLAFIN", "SHRIRAMFIN", "PFC", "RECLTD", "BSE", "MCX", "CDSL", "ANGELONE", "MUTHOOTFIN"],
+    "🌐 All Listed Stocks & Indices (Full Catalog)": list(COMPANY_NAMES.keys()),
+    "📊 Benchmark Indices Only (Nifty 50, Sensex, Bank Nifty)": ["^NSEI", "^BSESN", "^NSEBANK", "^CNXIT", "^CNXPHARMA", "^CNXAUTO"]
 }
 
-@st.cache_data(ttl=86400)
-def load_master_stock_dict():
-    master = dict(COMPANY_NAMES)
+# ==============================================================================
+# 2. SELF-HEALING CACHED DATA ENGINE (PREVENTS CLOUD RATE-LIMITING & N/A BUGS)
+# ==============================================================================
+
+@st.cache_data(ttl=45, show_spinner=False)
+def fetch_price_history(yf_ticker, period, interval):
+    tk = yf.Ticker(yf_ticker)
+    df = pd.DataFrame()
+    used_fallback = False
     try:
-        url = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=6) as response:
-            csv_text = response.read().decode('utf-8')
-        nse_df = pd.read_csv(io.StringIO(csv_text))
-        nse_df.columns = nse_df.columns.str.strip()
-        for _, row in nse_df.iterrows():
-            master[row['SYMBOL'].strip()] = row['NAME OF COMPANY'].strip()
+        df = tk.history(period=period, interval=interval, auto_adjust=False)
     except Exception:
-        for grp in INDEX_GROUPS.values():
-            if isinstance(grp, list):
-                for s in grp:
-                    if s not in master:
-                        master[s] = f"{s} India Ltd"
-    return master
+        df = pd.DataFrame()
 
-MASTER_STOCK_DICT = load_master_stock_dict()
+    # Automatic fallback if intraday is empty on weekends/holidays
+    if df is None or df.empty or len(df) < 5:
+        try:
+            df = tk.history(period="6mo", interval="1d", auto_adjust=False)
+            used_fallback = True
+        except Exception:
+            df = pd.DataFrame()
+    return df, used_fallback
 
-# ==============================================================================
-# 2. BULLETPROOF FUNDAMENTAL ENGINE (AUTO-FALLBACK TO .NS + STATEMENT MATH)
-# ==============================================================================
-@st.cache_data(ttl=900)
-def get_bulletproof_360_data(raw_sym, yf_ticker):
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_360_fundamentals(yf_ticker):
     tk = yf.Ticker(yf_ticker)
     hist_1y = pd.DataFrame()
-    info = {}
-    fast = {}
-    q_inc = pd.DataFrame()
-    a_inc = pd.DataFrame()
-    bal_sheet = pd.DataFrame()
-
     try:
-        hist_1y = tk.history(period="1y", interval="1d")
+        hist_1y = tk.history(period="1y", interval="1d", auto_adjust=False)
     except Exception:
         pass
 
-    if not raw_sym.startswith("^"):
-        try:
-            info = tk.info or {}
-        except Exception:
-            info = {}
+    if yf_ticker.startswith("^"):
+        return hist_1y, {}, pd.DataFrame(), pd.DataFrame()
 
-        # Fallback 1: If BSE (.BO) is selected and lacks summary info, pull company info from NSE (.NS)
-        if yf_ticker.endswith(".BO") and (not info or info.get("marketCap") is None):
-            try:
-                ns_tk = yf.Ticker(f"{raw_sym}.NS")
-                ns_info = ns_tk.info or {}
-                for k, v in ns_info.items():
-                    if info.get(k) is None and v is not None:
-                        info[k] = v
-                if hist_1y.empty:
-                    hist_1y = ns_tk.history(period="1y", interval="1d")
-            except Exception:
-                pass
+    info = {}
+    try:
+        info = tk.info or {}
+    except Exception:
+        info = {}
 
-        # Fallback 2: Fast Info (rarely rate-limited on Streamlit Cloud)
-        try:
-            fast = {
-                "market_cap": getattr(tk.fast_info, "market_cap", None),
-                "shares": getattr(tk.fast_info, "shares", None),
-                "year_high": getattr(tk.fast_info, "year_high", None),
-                "year_low": getattr(tk.fast_info, "year_low", None),
-            }
-        except Exception:
-            fast = {}
+    fast = {}
+    try:
+        f_obj = tk.fast_info
+        fast = {
+            "marketCap": getattr(f_obj, "market_cap", None),
+            "fiftyTwoWeekHigh": getattr(f_obj, "year_high", None),
+            "fiftyTwoWeekLow": getattr(f_obj, "year_low", None),
+            "shares": getattr(f_obj, "shares", None),
+            "lastPrice": getattr(f_obj, "last_price", None)
+        }
+    except Exception:
+        pass
 
-        # Financial Statements
-        try:
-            q_inc = tk.quarterly_income_stmt
-            if q_inc is None or q_inc.empty:
-                q_inc = yf.Ticker(f"{raw_sym}.NS").quarterly_income_stmt
-        except Exception:
-            pass
+    q_inc, a_inc, bal_sheet = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    try:
+        q_inc = tk.quarterly_income_stmt
+    except Exception:
+        pass
+    try:
+        a_inc = tk.income_stmt
+    except Exception:
+        pass
+    try:
+        bal_sheet = tk.balance_sheet
+    except Exception:
+        pass
 
-        try:
-            a_inc = tk.income_stmt
-            if a_inc is None or a_inc.empty:
-                a_inc = yf.Ticker(f"{raw_sym}.NS").income_stmt
-        except Exception:
-            pass
-
-        try:
-            bal_sheet = tk.balance_sheet
-            if bal_sheet is None or bal_sheet.empty:
-                bal_sheet = yf.Ticker(f"{raw_sym}.NS").balance_sheet
-        except Exception:
-            pass
-
-    return hist_1y, info, fast, q_inc, a_inc, bal_sheet
-
-
-def compute_smart_fundamentals(info, fast, q_inc, a_inc, bal_sheet, current_price):
-    """Computes missing fundamentals directly from Financial Statements if Yahoo .info is rate-limited."""
-    res = {
-        "sector": info.get("sector") or "Indian Listed Equity",
-        "industry": info.get("industry") or "NSE / BSE",
-        "mcap_cr": None,
-        "pe": info.get("trailingPE"),
-        "fwd_pe": info.get("forwardPE"),
-        "pb": info.get("priceToBook"),
-        "bv": info.get("bookValue"),
-        "roe": (info.get("returnOnEquity") * 100) if info.get("returnOnEquity") is not None else None,
-        "op_margin": (info.get("operatingMargins") * 100) if info.get("operatingMargins") is not None else None,
-        "net_margin": (info.get("profitMargins") * 100) if info.get("profitMargins") is not None else None,
-        "de": info.get("debtToEquity"),
-        "qtr_gr": (info.get("earningsQuarterlyGrowth") * 100) if info.get("earningsQuarterlyGrowth") is not None else None,
-        "div_y": (info.get("dividendYield") * 100) if info.get("dividendYield") is not None else None,
-        "prom_pct": (info.get("heldPercentInsiders") * 100) if info.get("heldPercentInsiders") is not None else None,
-        "high_52": info.get("fiftyTwoWeekHigh") or fast.get("year_high"),
-        "low_52": info.get("fiftyTwoWeekLow") or fast.get("year_low"),
-    }
-
-    # 1. Market Cap & Shares
-    raw_mcap = info.get("marketCap") or fast.get("market_cap")
+    # Self-healing calculation: Fill any missing .info fields using fast_info + accounting statements
+    cmp_val = fast.get("lastPrice") or (hist_1y['Close'].iloc[-1] if not hist_1y.empty else None)
     shares = info.get("sharesOutstanding") or fast.get("shares")
+    mcap = info.get("marketCap") or fast.get("marketCap") or ((cmp_val * shares) if (cmp_val and shares) else None)
 
-    if not shares and bal_sheet is not None and not bal_sheet.empty:
+    high_52 = info.get("fiftyTwoWeekHigh") or fast.get("fiftyTwoWeekHigh") or (hist_1y['High'].max() if not hist_1y.empty else None)
+    low_52 = info.get("fiftyTwoWeekLow") or fast.get("fiftyTwoWeekLow") or (hist_1y['Low'].min() if not hist_1y.empty else None)
+
+    # Extract Equity, Debt, Revenue, Net Income from Statements if info is blocked
+    stmt_equity, stmt_debt, stmt_net_inc, stmt_rev = None, None, None, None
+    if not bal_sheet.empty:
         b_df = bal_sheet.T.sort_index()
-        sh_col = next((c for c in ['Ordinary Shares Number', 'Share Issued', 'Common Stock'] if c in b_df.columns), None)
-        if sh_col and pd.notna(b_df[sh_col].dropna().iloc[-1]):
-            shares = float(b_df[sh_col].dropna().iloc[-1])
-
-    if not raw_mcap and shares and current_price:
-        raw_mcap = shares * current_price
-
-    if raw_mcap:
-        res["mcap_cr"] = raw_mcap / 1e7
-
-    # 2. Extract Balance Sheet Equity (Net Worth) & Total Debt
-    equity_val = None
-    debt_val = None
-    if bal_sheet is not None and not bal_sheet.empty:
-        b_df = bal_sheet.T.sort_index()
-        eq_col = next((c for c in ['Stockholders Equity', 'Common Stock Equity', 'Total Equity Gross Minority Interest'] if c in b_df.columns), None)
-        if eq_col and not b_df[eq_col].dropna().empty:
-            equity_val = float(b_df[eq_col].dropna().iloc[-1])
-
+        eq_col = next((c for c in ['Stockholders Equity', 'Total Equity Gross Minority Interest', 'Common Stock Equity'] if c in b_df.columns), None)
         dt_col = next((c for c in ['Total Debt', 'Long Term Debt', 'Net Debt'] if c in b_df.columns), None)
+        if eq_col and not b_df[eq_col].dropna().empty:
+            stmt_equity = float(b_df[eq_col].dropna().iloc[-1])
         if dt_col and not b_df[dt_col].dropna().empty:
-            debt_val = float(b_df[dt_col].dropna().iloc[-1])
+            stmt_debt = float(b_df[dt_col].dropna().iloc[-1])
 
-    # Calculate Book Value, P/B, and Debt/Equity from Balance Sheet if missing
-    if equity_val and equity_val > 0:
-        if res["pb"] is None and raw_mcap:
-            res["pb"] = raw_mcap / equity_val
-        if res["bv"] is None and res["pb"] and res["pb"] > 0:
-            res["bv"] = current_price / res["pb"]
-        elif res["bv"] is None and shares and shares > 0:
-            res["bv"] = equity_val / shares
-        if res["de"] is None and debt_val is not None:
-            res["de"] = (debt_val / equity_val) * 100.0
-
-    # 3. Extract TTM Revenue, Operating Income & Net Profit from Quarterly/Annual Income Statements
-    ttm_rev = None
-    ttm_op = None
-    ttm_net = None
-
-    if q_inc is not None and not q_inc.empty:
-        q_df = q_inc.T.sort_index()
-        rev_c = next((c for c in ['Total Revenue', 'Operating Revenue'] if c in q_df.columns), None)
-        op_c = next((c for c in ['Operating Income', 'EBIT', 'EBITDA'] if c in q_df.columns), None)
-        net_c = next((c for c in ['Net Income', 'Net Income Common Stockholders'] if c in q_df.columns), None)
-
-        if rev_c and not q_df[rev_c].dropna().empty:
-            recent_revs = q_df[rev_c].dropna().tail(4)
-            ttm_rev = float(recent_revs.sum()) * (4.0 / len(recent_revs))
-        if op_c and not q_df[op_c].dropna().empty:
-            recent_ops = q_df[op_c].dropna().tail(4)
-            ttm_op = float(recent_ops.sum()) * (4.0 / len(recent_ops))
-        if net_c and not q_df[net_c].dropna().empty:
-            net_series = q_df[net_c].dropna()
-            recent_nets = net_series.tail(4)
-            ttm_net = float(recent_nets.sum()) * (4.0 / len(recent_nets))
-
-            # Calculate Quarterly Profit Growth (%) if missing
-            if res["qtr_gr"] is None and len(net_series) >= 2:
-                latest_q = float(net_series.iloc[-1])
-                base_q = float(net_series.iloc[-5]) if len(net_series) >= 5 else float(net_series.iloc[-2])
-                if base_q != 0:
-                    res["qtr_gr"] = ((latest_q - base_q) / abs(base_q)) * 100.0
-
-    # Fallback to Annual Income Statement if Quarterly wasn't enough
-    if (ttm_net is None or ttm_rev is None) and a_inc is not None and not a_inc.empty:
+    if not a_inc.empty:
         a_df = a_inc.T.sort_index()
-        rev_c = next((c for c in ['Total Revenue', 'Operating Revenue'] if c in a_df.columns), None)
-        op_c = next((c for c in ['Operating Income', 'EBIT', 'EBITDA'] if c in a_df.columns), None)
-        net_c = next((c for c in ['Net Income', 'Net Income Common Stockholders'] if c in a_df.columns), None)
-        if ttm_rev is None and rev_c and not a_df[rev_c].dropna().empty:
-            ttm_rev = float(a_df[rev_c].dropna().iloc[-1])
-        if ttm_op is None and op_c and not a_df[op_c].dropna().empty:
-            ttm_op = float(a_df[op_c].dropna().iloc[-1])
-        if ttm_net is None and net_c and not a_df[net_c].dropna().empty:
-            ttm_net = float(a_df[net_c].dropna().iloc[-1])
+        ni_col = next((c for c in ['Net Income', 'Net Income Common Stockholders'] if c in a_df.columns), None)
+        rv_col = next((c for c in ['Total Revenue', 'Operating Revenue'] if c in a_df.columns), None)
+        if ni_col and not a_df[ni_col].dropna().empty:
+            stmt_net_inc = float(a_df[ni_col].dropna().iloc[-1])
+        if rv_col and not a_df[rv_col].dropna().empty:
+            stmt_rev = float(a_df[rv_col].dropna().iloc[-1])
 
-    # Calculate P/E, ROE, Operating Margin & Net Profit Margin from Statement Totals
-    if ttm_net and ttm_net > 0:
-        if res["pe"] is None and raw_mcap:
-            res["pe"] = raw_mcap / ttm_net
-        if res["roe"] is None and equity_val and equity_val > 0:
-            res["roe"] = (ttm_net / equity_val) * 100.0
+    bv = info.get("bookValue")
+    if not bv and stmt_equity and shares and shares > 0:
+        bv = stmt_equity / shares
 
-    if ttm_rev and ttm_rev > 0:
-        if res["net_margin"] is None and ttm_net is not None:
-            res["net_margin"] = (ttm_net / ttm_rev) * 100.0
-        if res["op_margin"] is None and ttm_op is not None:
-            res["op_margin"] = (ttm_op / ttm_rev) * 100.0
+    pb = info.get("priceToBook")
+    if not pb and cmp_val and bv and bv > 0:
+        pb = cmp_val / bv
 
-    return res
+    pe = info.get("trailingPE")
+    if not pe and mcap and stmt_net_inc and stmt_net_inc > 0:
+        pe = mcap / stmt_net_inc
+
+    roe = info.get("returnOnEquity")
+    if roe is None and stmt_net_inc and stmt_equity and stmt_equity > 0:
+        roe = stmt_net_inc / stmt_equity
+
+    net_margin = info.get("profitMargins")
+    if net_margin is None and stmt_net_inc and stmt_rev and stmt_rev > 0:
+        net_margin = stmt_net_inc / stmt_rev
+
+    de = info.get("debtToEquity")
+    if de is None and stmt_debt is not None and stmt_equity and stmt_equity > 0:
+        de = (stmt_debt / stmt_equity) * 100.0
+
+    # Calculate Quarterly YoY or QoQ Profit Growth from q_inc if missing
+    qtr_gr = info.get("earningsQuarterlyGrowth")
+    if qtr_gr is None and not q_inc.empty:
+        q_df = q_inc.T.sort_index()
+        ni_c = next((c for c in ['Net Income', 'Net Income Common Stockholders'] if c in q_df.columns), None)
+        if ni_c:
+            s_ni = q_df[ni_c].dropna()
+            if len(s_ni) >= 2 and s_ni.iloc[-2] != 0:
+                qtr_gr = (s_ni.iloc[-1] - s_ni.iloc[-2]) / abs(s_ni.iloc[-2])
+
+    clean_fund = {
+        "marketCap_Cr": (mcap / 1e7) if mcap else None,
+        "pe": pe,
+        "fwd_pe": info.get("forwardPE"),
+        "pb": pb,
+        "bv": bv,
+        "roe_pct": (roe * 100) if roe is not None else None,
+        "net_margin_pct": (net_margin * 100) if net_margin is not None else None,
+        "op_margin_pct": (info.get("operatingMargins") * 100) if info.get("operatingMargins") is not None else None,
+        "de_pct": de,
+        "high_52": high_52,
+        "low_52": low_52,
+        "qtr_gr_pct": (qtr_gr * 100) if qtr_gr is not None else None,
+        "div_yield_pct": (info.get("dividendYield") * 100) if info.get("dividendYield") is not None else None,
+        "promoter_pct": (info.get("heldPercentInsiders") * 100) if info.get("heldPercentInsiders") is not None else None,
+        "sector": info.get("sector", "Indian Listed Equity"),
+        "industry": info.get("industry", "NSE / BSE")
+    }
+    return hist_1y, clean_fund, q_inc, bal_sheet
 
 # ==============================================================================
-# 3. CLEAN, UNIFIED SIDEBAR
+# 3. CLEAN SIDEBAR CONTROLS
 # ==============================================================================
 st.sidebar.header("🇮🇳 Stock Search & Controls")
 
@@ -291,81 +238,81 @@ suffix = ".NS" if "NSE" in exchange_choice else ".BO"
 selected_group = st.sidebar.selectbox(
     "2. Filter by Index / Sector:",
     options=list(INDEX_GROUPS.keys()),
-    index=0
+    index=0  # Defaults to NSE NIFTY 50 Stocks
 )
 
-if INDEX_GROUPS[selected_group] == "ALL":
-    available_symbols = list(MASTER_STOCK_DICT.keys())
-else:
-    available_symbols = INDEX_GROUPS[selected_group]
-
-formatted_options = [
-    f"{sym} | {MASTER_STOCK_DICT.get(sym, sym)}"
-    for sym in available_symbols
-]
+available_symbols = INDEX_GROUPS[selected_group]
+formatted_options = [f"{sym} | {COMPANY_NAMES.get(sym, sym)}" for sym in available_symbols]
 
 selected_stock_option = st.sidebar.selectbox(
-    f"3. Search or Select Stock ({len(formatted_options):,} available):",
+    f"3. Select or Type Stock Name ({len(formatted_options)} in list):",
     options=formatted_options,
-    index=min(10, len(formatted_options) - 1) if selected_group.startswith("🌐") else 0,
-    key=f"stock_select_{selected_group}"
+    index=0,
+    key=f"stk_sel_{selected_group}"
 )
 
 raw_symbol = selected_stock_option.split(" | ")[0].strip()
 company_name = selected_stock_option.split(" | ")[1].strip()
 yf_ticker = raw_symbol if raw_symbol.startswith("^") else f"{raw_symbol}{suffix}"
 
-st.sidebar.markdown("---")
+# Automatically default to Daily Swing on weekends so full data shows immediately
+is_weekend = datetime.now().weekday() >= 5
+default_tf_idx = 3 if is_weekend else 0
+
 timeframe_label = st.sidebar.selectbox(
     "4. Chart Timeframe:",
     [
         "Intraday Live (5m Candles - 5 Days)",
-        "Intraday Live (1m Candles - Today)",
         "Intraday Live (15m Candles - 5 Days)",
         "Swing (3 Months - Daily)",
-        "Swing (6 Months - Daily)",
-        "Positional (1 Year - Daily)",
-        "Long Term (5 Years - Weekly)"
+        "Positional (6 Months - Daily)",
+        "Long Term (1 Year - Daily)",
+        "Multi-Year (5 Years - Weekly)"
     ],
-    index=0
+    index=default_tf_idx
 )
 
 tf_map = {
     "Intraday Live (5m Candles - 5 Days)": ("5d", "5m"),
-    "Intraday Live (1m Candles - Today)": ("1d", "1m"),
     "Intraday Live (15m Candles - 5 Days)": ("5d", "15m"),
     "Swing (3 Months - Daily)": ("3mo", "1d"),
-    "Swing (6 Months - Daily)": ("6mo", "1d"),
-    "Positional (1 Year - Daily)": ("1y", "1d"),
-    "Long Term (5 Years - Weekly)": ("5y", "1wk")
+    "Positional (6 Months - Daily)": ("6mo", "1d"),
+    "Long Term (1 Year - Daily)": ("1y", "1d"),
+    "Multi-Year (5 Years - Weekly)": ("5y", "1wk")
 }
 period, interval = tf_map[timeframe_label]
 
 overlays = st.sidebar.multiselect(
-    "5. Chart Overlays & Subplots:",
+    "5. Chart Overlays:",
     ["Moving Averages (20, 50, 200)", "Bollinger Bands (20, 2)", "Cumulative Volume Delta (CVD)", "RSI & Money Flow (MFI)"],
     default=["Moving Averages (20, 50, 200)", "Cumulative Volume Delta (CVD)", "RSI & Money Flow (MFI)"]
 )
 
-refresh_rate = st.sidebar.slider("6. Auto-Refresh (Seconds):", 5, 60, 10)
+refresh_rate = st.sidebar.slider("6. Auto-Refresh (Seconds):", 15, 120, 30)
 
 # ==============================================================================
-# 4. MAIN 360° STOCK VIEW
+# 4. MAIN 360° DASHBOARD (PRICE + INFLOW/OUTFLOW + STRATEGY + FUNDAMENTALS)
 # ==============================================================================
 st.title(f"🇮🇳 {company_name} ({yf_ticker})")
 
 @st.fragment(run_every=f"{refresh_rate}s")
-def render_360_stock_dashboard():
-    stock = yf.Ticker(yf_ticker)
-    df = stock.history(period=period, interval=interval)
-    hist_1y, info, fast, q_inc, a_inc, bal_sheet = get_bulletproof_360_data(raw_symbol, yf_ticker)
+def render_360_dashboard():
+    df, used_fallback = fetch_price_history(yf_ticker, period, interval)
+    hist_1y, fund, q_inc, bal_sheet = fetch_360_fundamentals(yf_ticker)
 
-    if df.empty and not hist_1y.empty:
-        df = hist_1y.copy()
-        st.caption("ℹ️ Intraday feed unavailable for this symbol right now; displaying Daily chart.")
-    elif df.empty:
-        st.error(f"Could not load market data for {yf_ticker}. Try switching Exchange to NSE (.NS) or selecting another stock.")
+    if df is None or df.empty:
+        st.error(f"Market data temporarily unavailable for {yf_ticker}. Please select another stock or switch timeframe.")
         return
+
+    if used_fallback:
+        st.info("ℹ️ Intraday candles are paused (Market Closed / Weekend). Showing Daily Historical chart automatically.")
+
+    df = df.dropna(subset=['Open', 'High', 'Low', 'Close']).copy()
+
+    # If an Index (^NSEI) reports 0 volume on Yahoo, synthesize activity weight from candle range so flow works
+    is_zero_vol = (df['Volume'].sum() == 0)
+    if is_zero_vol:
+        df['Volume'] = ((df['High'] - df['Low']).abs() * 1000).clip(lower=100).round(0)
 
     # --- A. VOLUME INFLOW & OUTFLOW CALCULATIONS ---
     hl_spread = (df['High'] - df['Low']).replace(0, np.nan)
@@ -382,56 +329,57 @@ def render_360_stock_dashboard():
     df['Outflow_Cr'] = (df['Sell_Vol'] * df['Typical_Price']) / 1e7
 
     # --- B. TECHNICAL INDICATORS ---
-    df['SMA_20'] = df['Close'].rolling(20).mean()
-    df['SMA_50'] = df['Close'].rolling(50).mean()
-    df['SMA_200'] = df['Close'].rolling(200).mean()
+    df['SMA_20'] = df['Close'].rolling(20, min_periods=1).mean()
+    df['SMA_50'] = df['Close'].rolling(50, min_periods=1).mean()
+    df['SMA_200'] = df['Close'].rolling(200, min_periods=1).mean()
 
-    std_20 = df['Close'].rolling(20).std()
+    std_20 = df['Close'].rolling(20, min_periods=2).std().fillna(0)
     df['BB_Upper'] = df['SMA_20'] + (std_20 * 2)
     df['BB_Lower'] = df['SMA_20'] - (std_20 * 2)
 
     delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    gain = (delta.where(delta > 0, 0)).rolling(14, min_periods=1).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14, min_periods=1).mean()
     df['RSI'] = (100 - (100 / (1 + (gain / loss.replace(0, np.nan))))).fillna(50)
 
     raw_mf = df['Typical_Price'] * df['Volume']
-    pos_mf = raw_mf.where(df['Typical_Price'] >= df['Typical_Price'].shift(1), 0).rolling(14).sum()
-    neg_mf = raw_mf.where(df['Typical_Price'] < df['Typical_Price'].shift(1), 0).rolling(14).sum()
+    pos_mf = raw_mf.where(df['Typical_Price'] >= df['Typical_Price'].shift(1), 0).rolling(14, min_periods=1).sum()
+    neg_mf = raw_mf.where(df['Typical_Price'] < df['Typical_Price'].shift(1), 0).rolling(14, min_periods=1).sum()
     df['MFI'] = (100 - (100 / (1 + (pos_mf / neg_mf.replace(0, np.nan))))).fillna(50)
 
-    # --- C. SECTION 1: LIVE PRICE & VOLUME INFLOW/OUTFLOW SCOREBOARD ---
+    # --- C. TOP ROW: LIVE PRICE & VOLUME INFLOW / OUTFLOW ---
     latest = float(df['Close'].iloc[-1])
-    prev = float(df['Open'].iloc[0]) if interval in ["1m", "5m", "15m"] else (float(df['Close'].iloc[-2]) if len(df) > 1 else latest)
+    prev = float(df['Close'].iloc[-2]) if len(df) > 1 else float(df['Open'].iloc[0])
     chg = latest - prev
-    pct = (chg / prev) * 100
+    pct = (chg / prev) * 100 if prev != 0 else 0.0
 
-    tot_vol = df['Volume'].sum()
-    in_vol = df['Buy_Vol'].sum()
-    out_vol = df['Sell_Vol'].sum()
+    tot_vol = float(df['Volume'].sum())
+    in_vol = float(df['Buy_Vol'].sum())
+    out_vol = float(df['Sell_Vol'].sum())
     net_vol = in_vol - out_vol
     in_pct = (in_vol / tot_vol * 100) if tot_vol > 0 else 50.0
     out_pct = 100.0 - in_pct
 
-    in_cr = df['Inflow_Cr'].sum()
-    out_cr = df['Outflow_Cr'].sum()
+    in_cr = float(df['Inflow_Cr'].sum())
+    out_cr = float(df['Outflow_Cr'].sum())
     net_cr = in_cr - out_cr
-    mfi_val = df['MFI'].iloc[-1]
-    rsi_val = df['RSI'].iloc[-1]
+    rsi_val = float(df['RSI'].iloc[-1])
+    mfi_val = float(df['MFI'].iloc[-1])
 
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Live Price (₹)", f"₹{latest:,.2f}", f"{chg:+.2f} ({pct:+.2f}%)")
-    k2.metric("🟢 Buyer Volume Inflow", f"{int(in_vol):,}", f"₹{in_cr:,.2f} Cr ({in_pct:.1f}%)")
-    k3.metric("🔴 Seller Volume Outflow", f"{int(out_vol):,}", f"-₹{out_cr:,.2f} Cr ({out_pct:.1f}%)", delta_color="inverse")
-    k4.metric("⚡ Net Volume Flow", f"{int(net_vol):+,}", f"Net ₹{net_cr:+,.2f} Cr | MFI: {mfi_val:.0f}")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Live Price (₹)", f"₹{latest:,.2f}", f"{chg:+.2f} ({pct:+.2f}%)")
+    c2.metric("🟢 Buyer Volume Inflow", f"{int(in_vol):,}", f"₹{in_cr:,.2f} Cr ({in_pct:.1f}%)")
+    c3.metric("🔴 Seller Volume Outflow", f"{int(out_vol):,}", f"-₹{out_cr:,.2f} Cr ({out_pct:.1f}%)", delta_color="inverse")
+    c4.metric("⚡ Net Volume Flow", f"{int(net_vol):+,}", f"Net ₹{net_cr:+,.2f} Cr")
+    c5.metric("RSI (14) / MFI (14)", f"{rsi_val:.1f} / {mfi_val:.1f}", "🟢 Accumulation" if net_vol >= 0 else "🔴 Distribution", delta_color="off")
 
     st.markdown(
         f"""
-        <div style="background:#1e293b; padding:9px 14px; border-radius:8px; margin-bottom:10px; border:1px solid #334155;">
+        <div style="background:#1e293b; padding:9px 14px; border-radius:8px; margin-bottom:12px; border:1px solid #334155;">
             <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:4px;">
-                <span style="color:#10b981;">🟢 BUYER INFLOW: {in_pct:.1f}% ({int(in_vol):,} shares | ₹{in_cr:,.2f} Cr)</span>
-                <span style="color:#94a3b8;">Updated: {datetime.now().strftime('%H:%M:%S')} | RSI(14): {rsi_val:.1f} | Last Bar Delta: {int(df['Net_Delta'].iloc[-1]):+,}</span>
-                <span style="color:#ef4444;">🔴 SELLER OUTFLOW: {out_pct:.1f}% ({int(out_vol):,} shares | ₹{out_cr:,.2f} Cr)</span>
+                <span style="color:#10b981;">🟢 BUYER INFLOW: {in_pct:.1f}% ({int(in_vol):,} | ₹{in_cr:,.2f} Cr)</span>
+                <span style="color:#94a3b8;">Last Updated: {datetime.now().strftime('%H:%M:%S')} | Latest Bar Net Delta: {int(df['Net_Delta'].iloc[-1]):+,}</span>
+                <span style="color:#ef4444;">🔴 SELLER OUTFLOW: {out_pct:.1f}% ({int(out_vol):,} | ₹{out_cr:,.2f} Cr)</span>
             </div>
             <div style="width:100%; height:10px; background:#ef4444; border-radius:5px; overflow:hidden;">
                 <div style="width:{in_pct:.1f}%; height:100%; background:#10b981;"></div>
@@ -441,16 +389,21 @@ def render_360_stock_dashboard():
         unsafe_allow_html=True
     )
 
-    # --- D. SECTION 2: INTERACTIVE MULTI-PANE CHART ---
+    # --- D. GAP-FREE INTERACTIVE CHART (NO WEEKEND/OVERNIGHT BLANK GAPS) ---
+    if interval in ["5m", "15m"] and not used_fallback:
+        x_labels = [ts.strftime('%d %b %H:%M') for ts in df.index]
+    else:
+        x_labels = [ts.strftime('%d %b %Y') for ts in df.index]
+
     show_sma = "Moving Averages (20, 50, 200)" in overlays
     show_bb = "Bollinger Bands (20, 2)" in overlays
     show_cvd = "Cumulative Volume Delta (CVD)" in overlays
     show_osc = "RSI & Money Flow (MFI)" in overlays
 
-    titles = ["Price Action & Key Moving Averages (₹)", "Volume Inflow (Green) vs. Outflow (Red)"]
+    titles = ["Price Action & Moving Averages (₹)", "Volume Inflow (Green) vs. Outflow (Red)"]
     heights = [0.52, 0.18]
     if show_cvd:
-        titles.append("Cumulative Volume Delta (CVD - Net Institutional Buying/Selling)")
+        titles.append("Cumulative Volume Delta (CVD - Institutional Accumulation/Distribution)")
         heights.append(0.15)
     if show_osc:
         titles.append("Momentum: RSI (14) & Money Flow Index (MFI 14)")
@@ -459,14 +412,175 @@ def render_360_stock_dashboard():
     heights = [h / sum(heights) for h in heights]
     fig = make_subplots(rows=len(heights), cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=heights, subplot_titles=titles)
 
-    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="OHLC (₹)"), row=1, col=1)
+    fig.add_trace(go.Candlestick(x=x_labels, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="OHLC (₹)"), row=1, col=1)
     if show_sma:
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], line=dict(color='#f59e0b', width=1.5), name="20 SMA"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], line=dict(color='#38bdf8', width=1.5), name="50 SMA"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA_200'], line=dict(color='#ec4899', width=1.8, dash='dot'), name="200 SMA"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=x_labels, y=df['SMA_20'], line=dict(color='#f59e0b', width=1.5), name="20 SMA"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=x_labels, y=df['SMA_50'], line=dict(color='#38bdf8', width=1.5), name="50 SMA"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=x_labels, y=df['SMA_200'], line=dict(color='#ec4899', width=1.8, dash='dot'), name="200 SMA"), row=1, col=1)
     if show_bb:
-        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'], line=dict(color='rgba(148,163,184,0.4)', width=1), name="BB Upper"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], line=dict(color='rgba(148,163,184,0.4)', width=1), fill='tonexty', fillcolor='rgba(148,163,184,0.07)', name="BB Lower"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=x_labels, y=df['BB_Upper'], line=dict(color='rgba(148,163,184,0.4)', width=1), name="BB Upper"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=x_labels, y=df['BB_Lower'], line=dict(color='rgba(148,163,184,0.4)', width=1), fill='tonexty', fillcolor='rgba(148,163,184,0.07)', name="BB Lower"), row=1, col=1)
 
-    fig.add_trace(go.Bar(x=df.index, y=df['Buy_Vol'], marker_color='#10b981', name="Inflow Vol (Buy)"), row=2, col=1)
-    fig.add_trace(go.Bar(x=df.index, y=-df['Sell_Vol'], marker_color='#ef4444', name="Outflow Vol (Sell)"), row=2,
+    fig.add_trace(go.Bar(x=x_labels, y=df['Buy_Vol'], marker_color='#10b981', name="Inflow Vol (Buy)"), row=2, col=1)
+    fig.add_trace(go.Bar(x=x_labels, y=-df['Sell_Vol'], marker_color='#ef4444', name="Outflow Vol (Sell)"), row=2, col=1)
+
+    r_idx = 3
+    if show_cvd:
+        cvd_col = '#10b981' if df['CVD'].iloc[-1] >= 0 else '#ef4444'
+        fig.add_trace(go.Scatter(
+            x=x_labels, y=df['CVD'], mode='lines', line=dict(color=cvd_col, width=2),
+            fill='tozeroy', fillcolor='rgba(16,185,129,0.12)' if df['CVD'].iloc[-1] >= 0 else 'rgba(239,68,68,0.12)',
+            name="CVD"
+        ), row=r_idx, col=1)
+        r_idx += 1
+
+    if show_osc:
+        fig.add_trace(go.Scatter(x=x_labels, y=df['RSI'], line=dict(color='#a855f7', width=1.5), name="RSI (14)"), row=r_idx, col=1)
+        fig.add_trace(go.Scatter(x=x_labels, y=df['MFI'], line=dict(color='#22d3ee', width=1.5, dash='dot'), name="MFI (14)"), row=r_idx, col=1)
+        fig.add_hline(y=70, line_dash="dash", line_color="#ef4444", row=r_idx, col=1)
+        fig.add_hline(y=30, line_dash="dash", line_color="#10b981", row=r_idx, col=1)
+
+    fig.update_xaxes(type='category', nticks=12)
+    fig.update_layout(height=700, template="plotly_dark", barmode="relative", xaxis_rangeslider_visible=False, margin=dict(l=15, r=15, t=25, b=10), uirevision=f"{yf_ticker}_{timeframe_label}")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- E. STRATEGY SCORECARD & FUNDAMENTALS (FOR ALL STOCKS) ---
+    if raw_symbol.startswith("^"):
+        st.info("📌 **Note:** You are currently viewing a Benchmark Index. Select any individual company from the sidebar (such as **RELIANCE**, **HDFCBANK**, **TCS**, or **SBIN**) to view Company Fundamentals, Balance Sheet Charts, and Strategy Scorecards.")
+    else:
+        base_df = hist_1y if not hist_1y.empty else df
+        d_close = float(base_df['Close'].iloc[-1])
+        dma_50 = float(base_df['Close'].rolling(50, min_periods=1).mean().iloc[-1])
+        dma_200 = float(base_df['Close'].rolling(200, min_periods=1).mean().iloc[-1])
+        high_52 = fund.get("high_52") or float(base_df['High'].max())
+        low_52 = fund.get("low_52") or float(base_df['Low'].min())
+        dist_52h = ((high_52 - d_close) / high_52 * 100) if high_52 else 0.0
+
+        mcap_cr = fund.get("marketCap_Cr")
+        pe = fund.get("pe")
+        fwd_pe = fund.get("fwd_pe")
+        pb = fund.get("pb")
+        bv = fund.get("bv")
+        roe = fund.get("roe_pct")
+        op_m = fund.get("op_margin_pct")
+        net_m = fund.get("net_margin_pct")
+        de = fund.get("de_pct")
+        qtr_gr = fund.get("qtr_gr_pct")
+        div_y = fund.get("div_yield_pct")
+        prom = fund.get("promoter_pct")
+
+        pass_value = (pb is not None and pb <= 3.5) and (pe is None or pe <= 28)
+        pass_breakout = (dist_52h <= 15.0) and (d_close >= dma_50) and (in_pct >= 50.0)
+        pass_canslim = (d_close >= dma_50) and (d_close >= dma_200) and (dist_52h <= 15.0) and (roe is None or roe >= 14.0)
+
+        st.markdown("### 🎯 Strategy Scorecard & Qualification")
+        sc1, sc2, sc3 = st.columns(3)
+        with sc1:
+            with st.container(border=True):
+                st.markdown(f"**💎 Low P/B Value Strategy:** {'🟢 **QUALIFIES**' if pass_value else '⚪ **Watchlist**'}")
+                st.caption(f"• P/B Ratio: **{f'{pb:.2f}x' if pb else 'N/A'}** (Target ≤ 3.5x) | Book Value: **{f'₹{bv:,.1f}' if bv else 'N/A'}**")
+                st.caption(f"• Trailing P/E: **{f'{pe:.1f}x' if pe else 'N/A'}** (Target ≤ 28x)")
+        with sc2:
+            with st.container(border=True):
+                st.markdown(f"**🚀 52-Week High Breakout:** {'🟢 **QUALIFIES**' if pass_breakout else '⚪ **Watchlist**'}")
+                st.caption(f"• Off 52W High (₹{high_52:,.1f}): **{dist_52h:.1f}%** (Target ≤ 15%)")
+                st.caption(f"• Above 50 DMA (₹{dma_50:,.1f}): **{'Yes' if d_close >= dma_50 else 'No'}** | Buy Inflow: **{in_pct:.1f}%**")
+        with sc3:
+            with st.container(border=True):
+                st.markdown(f"**🏆 CANSLIM Growth & Momentum:** {'🟢 **QUALIFIES**' if pass_canslim else '⚪ **Watchlist**'}")
+                st.caption(f"• Above 50 & 200 DMA (₹{dma_200:,.1f}): **{'Yes' if (d_close >= dma_50 and d_close >= dma_200) else 'No'}**")
+                st.caption(f"• ROE: **{f'{roe:.1f}%' if roe is not None else 'N/A'}** | Qtr Profit Gr: **{f'{qtr_gr:+.1f}%' if qtr_gr is not None else 'N/A'}**")
+
+        st.markdown(f"### 🏛️ Company Fundamentals & Financial Statements — `{fund.get('sector')}`")
+        f1, f2, f3, f4, f5, f6 = st.columns(6)
+        f1.metric("Market Cap", f"₹{mcap_cr:,.0f} Cr" if mcap_cr else "N/A")
+        f2.metric("Trailing P/E", f"{pe:.1f}x" if pe else "N/A")
+        f3.metric("P/B & Book Value", f"{pb:.2f}x (₹{bv:,.0f})" if (pb and bv) else (f"{pb:.2f}x" if pb else "N/A"))
+        f4.metric("ROE (%)", f"{roe:.1f}%" if roe is not None else "N/A")
+        f5.metric("Net Profit Margin", f"{net_m:.1f}%" if net_m is not None else "N/A")
+        f6.metric("Debt to Equity", f"{de:.1f}%" if de is not None else "N/A")
+
+        f7, f8, f9, f10, f11, f12 = st.columns(6)
+        f7.metric("52-Week High", f"₹{high_52:,.2f}" if high_52 else "N/A")
+        f8.metric("52-Week Low", f"₹{low_52:,.2f}" if low_52 else "N/A")
+        f9.metric("50 & 200 DMA", f"₹{dma_50:,.0f} / ₹{dma_200:,.0f}")
+        f10.metric("Qtr Profit Growth", f"{qtr_gr:+.1f}%" if qtr_gr is not None else "N/A")
+        f11.metric("Dividend Yield", f"{div_y:.2f}%" if div_y is not None else "N/A")
+        f12.metric("Promoter Holding", f"{prom:.1f}%" if prom is not None else "N/A")
+
+        ch1, ch2 = st.columns(2)
+        with ch1:
+            if not q_inc.empty:
+                q_df = q_inc.T.sort_index()
+                rev_c = next((c for c in ['Total Revenue', 'Operating Revenue'] if c in q_df.columns), None)
+                net_c = next((c for c in ['Net Income', 'Net Income Common Stockholders'] if c in q_df.columns), None)
+                if rev_c and net_c:
+                    dates = [d.strftime('%b %Y') if hasattr(d, 'strftime') else str(d) for d in q_df.index]
+                    fig_q = go.Figure()
+                    fig_q.add_trace(go.Bar(x=dates, y=q_df[rev_c] / 1e7, name="Revenue (₹ Cr)", marker_color="#38bdf8"))
+                    fig_q.add_trace(go.Bar(x=dates, y=q_df[net_c] / 1e7, name="Net Profit (₹ Cr)", marker_color="#10b981"))
+                    fig_q.update_layout(title="📊 Quarterly Revenue vs. Net Profit (₹ Crores)", height=320, template="plotly_dark", barmode="group", margin=dict(l=10, r=10, t=35, b=10))
+                    st.plotly_chart(fig_q, use_container_width=True)
+
+        with ch2:
+            if not bal_sheet.empty:
+                b_df = bal_sheet.T.sort_index()
+                as_c = next((c for c in ['Total Assets'] if c in b_df.columns), None)
+                eq_c = next((c for c in ['Stockholders Equity', 'Total Equity Gross Minority Interest', 'Common Stock Equity'] if c in b_df.columns), None)
+                dt_c = next((c for c in ['Total Debt', 'Long Term Debt'] if c in b_df.columns), None)
+                if as_c:
+                    b_dates = [d.strftime('%Y') if hasattr(d, 'strftime') else str(d) for d in b_df.index]
+                    fig_b = go.Figure()
+                    fig_b.add_trace(go.Bar(x=b_dates, y=b_df[as_c] / 1e7, name="Total Assets (₹ Cr)", marker_color="#6366f1"))
+                    if eq_c: fig_b.add_trace(go.Bar(x=b_dates, y=b_df[eq_c] / 1e7, name="Net Worth (₹ Cr)", marker_color="#10b981"))
+                    if dt_c: fig_b.add_trace(go.Bar(x=b_dates, y=b_df[dt_c] / 1e7, name="Total Debt (₹ Cr)", marker_color="#ef4444"))
+                    fig_b.update_layout(title="🏦 Annual Balance Sheet: Assets, Equity & Debt (₹ Crores)", height=320, template="plotly_dark", barmode="group", margin=dict(l=10, r=10, t=35, b=10))
+                    st.plotly_chart(fig_b, use_container_width=True)
+
+render_360_dashboard()
+
+# ==============================================================================
+# 5. ONE-CLICK PEER COMPARISON FOR SELECTED INDEX
+# ==============================================================================
+with st.expander(f"🔍 Scan & Compare All Peer Stocks in [{selected_group}]", expanded=False):
+    peer_list = available_symbols[:25]
+    if st.button(f"🚀 Scan {len(peer_list)} Stocks in {selected_group.split('(')[0].strip()}", type="primary"):
+        rows = []
+        prog = st.progress(0)
+        for i, s in enumerate(peer_list):
+            try:
+                t_s = s if s.startswith("^") else f"{s}{suffix}"
+                h, _ = fetch_price_history(t_s, "3mo", "1d")
+                if not h.empty and len(h) >= 15:
+                    c = float(h['Close'].iloc[-1])
+                    prev_c = float(h['Close'].iloc[-2])
+                    chg_p = (c - prev_c) / prev_c * 100
+                    sma50 = float(h['Close'].rolling(50, min_periods=1).mean().iloc[-1])
+                    h52 = float(h['High'].max())
+                    off_52 = (h52 - c) / h52 * 100 if h52 else 0
+
+                    rec = h.tail(5)
+                    hl = (rec['High'] - rec['Low']).replace(0, np.nan)
+                    br = ((rec['Close'] - rec['Low']) / hl).fillna(0.5).clip(0, 1)
+                    in_v = float((rec['Volume'] * br).sum())
+                    tot_v = float(rec['Volume'].sum())
+                    in_p = (in_v / tot_v * 100) if tot_v > 0 else 50.0
+                    net_cr_5d = float((((rec['Volume'] * br) - (rec['Volume'] * (1 - br))) * ((rec['High'] + rec['Low'] + rec['Close']) / 3)).sum() / 1e7)
+
+                    rows.append({
+                        "Symbol": s,
+                        "Company": COMPANY_NAMES.get(s, s)[:26],
+                        "Price (₹)": round(c, 2),
+                        "1D Chg (%)": round(chg_p, 2),
+                        "🟢 5D Buy Inflow (%)": round(in_p, 1),
+                        "5D Net Flow (₹ Cr)": round(net_cr_5d, 2),
+                        "50 DMA (₹)": round(sma50, 1),
+                        "Off 52W High (%)": round(off_52, 1),
+                        "Trend & Flow Signal": "🟢 Breakout + Inflow" if (c >= sma50 and in_p >= 52) else ("🔴 Below 50 DMA" if c < sma50 else "🟡 Neutral")
+                    })
+            except Exception:
+                pass
+            prog.progress((i + 1) / len(peer_list))
+        prog.empty()
+        if rows:
+            st.dataframe(pd.DataFrame(rows).sort_values(by="5D Net Flow (₹ Cr)", ascending=False), use_container_width=True, hide_index=True)
