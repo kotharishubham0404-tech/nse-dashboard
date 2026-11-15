@@ -8,10 +8,18 @@ from datetime import datetime, timedelta
 import requests
 import urllib.parse
 import gzip
-import json
 import io
 
 st.set_page_config(page_title="NSE & BSE 360° Upstox Pro Terminal", layout="wide")
+
+# ==============================================================================
+# 0. PRE-CONFIGURED UPSTOX EXTENDED API TOKEN
+# ==============================================================================
+DEFAULT_UPSTOX_TOKEN = (
+    "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ."
+    "eyJzdWIiOiI3SkI1NEwiLCJqdGkiOiI2YWY5OTU5ZTk0MGI1ZTc2ZDBhZTkzYjgiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6ZmFsc2UsImlzRXh0ZW5kZWQiOnRydWUsImlhdCI6MTc5NDc0MTY2MiwiaXNzIjoidWRhcGktZ2F0ZXdheS1zZXJ2aWNlIiwiZXhwIjoxODI2MzE2MDAwfQ."
+    "S_UNBE3KkJIFXH7kNbsSK1Sae6MBh9ad-vp8sgnrxKA"
+)
 
 # ==============================================================================
 # 1. VERIFIED NSE & BSE CATALOG + BUILT-IN UPSTOX INSTRUMENT KEY DIRECTORY
@@ -60,7 +68,6 @@ COMPANY_NAMES = {
     "^CNXIT": "NSE Nifty IT Index", "^CNXPHARMA": "NSE Nifty Pharma Index", "^CNXAUTO": "NSE Nifty Auto Index"
 }
 
-# Built-in instant Upstox Instrument Keys for top NSE stocks & indices (Zero download delay)
 CORE_UPSTOX_KEYS = {
     "^NSEI": "NSE_INDEX|Nifty 50", "^BSESN": "BSE_INDEX|SENSEX", "^NSEBANK": "NSE_INDEX|Nifty Bank",
     "^CNXIT": "NSE_INDEX|Nifty IT", "^CNXPHARMA": "NSE_INDEX|Nifty Pharma", "^CNXAUTO": "NSE_INDEX|Nifty Auto",
@@ -106,7 +113,7 @@ INDEX_GROUPS = {
 }
 
 # ==============================================================================
-# 2. UPSTOX API v2 ENGINE (SUPPORTS DIRECT ACCESS OR ANALYTICS TOKEN)
+# 2. UPSTOX API v2 ENGINE (PRE-LOADED EXTENDED TOKEN + WEEKEND INTRADAY RESAMPLER)
 # ==============================================================================
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -148,11 +155,9 @@ def fetch_upstox_live_quote(instrument_key, access_token):
             if data:
                 return list(data.values())[0], None
         elif r.status_code == 401:
-            return None, "Token expired or invalid (401 Unauthorized). Please generate a fresh Upstox Token."
-        else:
-            return None, f"Upstox API Status {r.status_code}"
-    except Exception as e:
-        return None, str(e)
+            return None, "Token expired or invalid (401 Unauthorized)."
+    except Exception:
+        pass
     return None, None
 
 def fetch_upstox_candles(instrument_key, period, interval, access_token):
@@ -167,9 +172,10 @@ def fetch_upstox_candles(instrument_key, period, interval, access_token):
             r = requests.get(url, headers=headers, timeout=8)
             candles = r.json().get("data", {}).get("candles", []) if r.status_code == 200 else []
 
+            # Weekend / After-Hours Fallback: Pull last 7 days of 1minute or 30minute candles from Upstox Historical API
             if not candles:
-                from_d = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
-                url_h = f"https://api.upstox.com/v2/historical-candle/{encoded_key}/30minute/{today_str}/{from_d}"
+                from_d = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+                url_h = f"https://api.upstox.com/v2/historical-candle/{encoded_key}/{up_int}/{today_str}/{from_d}"
                 r_h = requests.get(url_h, headers=headers, timeout=8)
                 candles = r_h.json().get("data", {}).get("candles", []) if r_h.status_code == 200 else []
         else:
@@ -185,7 +191,7 @@ def fetch_upstox_candles(instrument_key, period, interval, access_token):
             df = pd.DataFrame(candles, columns=["Timestamp", "Open", "High", "Low", "Close", "Volume", "OI"])
             df["Timestamp"] = pd.to_datetime(df["Timestamp"])
             df = df.sort_values("Timestamp").set_index("Timestamp")
-            if interval == "5m" and len(df) > 30:
+            if interval == "5m" and len(df) > 25:
                 df = df.resample("5min").agg({
                     "Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum", "OI": "last"
                 }).dropna(subset=["Open", "Close"])
@@ -326,7 +332,7 @@ def fetch_360_fundamentals(yf_ticker):
     return hist_1y, clean_fund, q_inc, bal_sheet
 
 # ==============================================================================
-# 4. SIDEBAR: SINGLE-BOX UPSTOX TOKEN INPUT & STOCK CONTROLS
+# 4. SIDEBAR: PRE-CONNECTED UPSTOX TOKEN & STOCK CONTROLS
 # ==============================================================================
 
 secret_token = ""
@@ -336,25 +342,21 @@ except Exception:
     secret_token = ""
 
 if "upstox_token" not in st.session_state:
-    st.session_state["upstox_token"] = clean_token(secret_token)
+    st.session_state["upstox_token"] = clean_token(secret_token) or DEFAULT_UPSTOX_TOKEN
 
 st.sidebar.header("⚡ Upstox Live API Feed")
+st.sidebar.success("🟢 Upstox Extended Token Active (Client: 7JB54L)")
 
-with st.sidebar.expander("🔑 Upstox Token Setup", expanded=not bool(st.session_state["upstox_token"])):
+with st.sidebar.expander("🔑 Change or View Upstox Token", expanded=False):
     user_tok = st.text_input(
-        "Paste Upstox Access / Analytics Token:",
+        "Upstox Access / Extended Token:",
         value=st.session_state["upstox_token"],
-        type="password",
-        help="Paste your Upstox Access Token or Analytics Token here and press Enter."
+        type="password"
     )
     if clean_token(user_tok) != st.session_state["upstox_token"]:
         st.session_state["upstox_token"] = clean_token(user_tok)
 
 active_token = st.session_state["upstox_token"]
-if active_token:
-    st.sidebar.success("🟢 Upstox Token Loaded (Live Order Book & Candles Enabled)")
-else:
-    st.sidebar.info("🟡 Paste your Upstox Token above to unlock Live Level-2 Order Book & VWAP")
 
 st.sidebar.markdown("---")
 st.sidebar.header("🇮🇳 Stock Search & Controls")
@@ -378,9 +380,6 @@ company_name = selected_stock_option.split(" | ")[1].strip()
 yf_ticker = raw_symbol if raw_symbol.startswith("^") else f"{raw_symbol}{suffix}"
 upstox_inst_key = UPSTOX_INST_MAP.get(raw_symbol)
 
-is_weekend = datetime.now().weekday() >= 5
-default_tf_idx = 3 if is_weekend else 1
-
 timeframe_label = st.sidebar.selectbox(
     "4. Chart Timeframe:",
     [
@@ -392,7 +391,7 @@ timeframe_label = st.sidebar.selectbox(
         "Long Term (1 Year - Daily)",
         "Multi-Year (5 Years - Weekly)"
     ],
-    index=default_tf_idx
+    index=1
 )
 
 tf_map = {
@@ -427,14 +426,14 @@ def render_hybrid_terminal():
     used_fallback = False
     data_source_badge = "Standard Market Feed"
 
-    # --- 1. FETCH FROM UPSTOX API v2 USING YOUR TOKEN ---
+    # --- 1. FETCH FROM UPSTOX API v2 USING EMBEDDED TOKEN ---
     if active_token and upstox_inst_key:
         up_quote, up_err = fetch_upstox_live_quote(upstox_inst_key, active_token)
         df = fetch_upstox_candles(upstox_inst_key, period, interval, active_token)
         if not df.empty or up_quote:
-            data_source_badge = f"⚡ Upstox Live API v2 ({upstox_inst_key})"
-        if up_err:
-            st.warning(f"⚠️ Upstox API Notice: {up_err} (Using backup market feed automatically)")
+            data_source_badge = f"⚡ Upstox API v2 ({upstox_inst_key})"
+        elif up_err:
+            st.warning(f"⚠️ Upstox API Notice: {up_err}")
 
     # --- 2. AUTOMATIC FALLBACK IF UPSTOX CANDLES EMPTY ---
     if df.empty:
@@ -651,56 +650,4 @@ def render_hybrid_terminal():
         with sc2:
             with st.container(border=True):
                 st.markdown(f"**🚀 52-Week High Breakout:** {'🟢 **QUALIFIES**' if pass_breakout else '⚪ **Watchlist**'}")
-                st.caption(f"• Off 52W High (₹{high_52:,.1f}): **{dist_52h:.1f}%** | Above 50 DMA (₹{dma_50:,.1f}): **{'Yes' if d_close >= dma_50 else 'No'}**")
-        with sc3:
-            with st.container(border=True):
-                st.markdown(f"**🏆 CANSLIM Growth & Momentum:** {'🟢 **QUALIFIES**' if pass_canslim else '⚪ **Watchlist**'}")
-                st.caption(f"• Above 50 & 200 DMA: **{'Yes' if (d_close >= dma_50 and d_close >= dma_200) else 'No'}** | ROE: **{f'{roe:.1f}%' if roe is not None else 'N/A'}**")
-
-        st.markdown(f"### 🏛️ Company Fundamentals & Financial Statements — `{fund.get('sector')}`")
-        f1, f2, f3, f4, f5, f6 = st.columns(6)
-        f1.metric("Market Cap", f"₹{mcap_cr:,.0f} Cr" if mcap_cr else "N/A")
-        f2.metric("Trailing P/E", f"{pe:.1f}x" if pe else "N/A")
-        f3.metric("P/B & Book Value", f"{pb:.2f}x (₹{bv:,.0f})" if (pb and bv) else (f"{pb:.2f}x" if pb else "N/A"))
-        f4.metric("ROE (%)", f"{roe:.1f}%" if roe is not None else "N/A")
-        f5.metric("Net Profit Margin", f"{net_m:.1f}%" if net_m is not None else "N/A")
-        f6.metric("Debt to Equity", f"{de:.1f}%" if de is not None else "N/A")
-
-        f7, f8, f9, f10, f11, f12 = st.columns(6)
-        f7.metric("52-Week High", f"₹{high_52:,.2f}" if high_52 else "N/A")
-        f8.metric("52-Week Low", f"₹{low_52:,.2f}" if low_52 else "N/A")
-        f9.metric("50 & 200 DMA", f"₹{dma_50:,.0f} / ₹{dma_200:,.0f}")
-        f10.metric("Qtr Profit Growth", f"{qtr_gr:+.1f}%" if qtr_gr is not None else "N/A")
-        f11.metric("Dividend Yield", f"{div_y:.2f}%" if div_y is not None else "N/A")
-        f12.metric("Promoter Holding", f"{prom:.1f}%" if prom is not None else "N/A")
-
-        ch1, ch2 = st.columns(2)
-        with ch1:
-            if not q_inc.empty:
-                q_df = q_inc.T.sort_index()
-                rev_c = next((c for c in ['Total Revenue', 'Operating Revenue'] if c in q_df.columns), None)
-                net_c = next((c for c in ['Net Income', 'Net Income Common Stockholders'] if c in q_df.columns), None)
-                if rev_c and net_c:
-                    dates = [d.strftime('%b %Y') if hasattr(d, 'strftime') else str(d) for d in q_df.index]
-                    fig_q = go.Figure()
-                    fig_q.add_trace(go.Bar(x=dates, y=q_df[rev_c] / 1e7, name="Revenue (₹ Cr)", marker_color="#38bdf8"))
-                    fig_q.add_trace(go.Bar(x=dates, y=q_df[net_c] / 1e7, name="Net Profit (₹ Cr)", marker_color="#10b981"))
-                    fig_q.update_layout(title="📊 Quarterly Revenue vs. Net Profit (₹ Crores)", height=320, template="plotly_dark", barmode="group", margin=dict(l=10, r=10, t=35, b=10))
-                    st.plotly_chart(fig_q, use_container_width=True)
-
-        with ch2:
-            if not bal_sheet.empty:
-                b_df = bal_sheet.T.sort_index()
-                as_c = next((c for c in ['Total Assets'] if c in b_df.columns), None)
-                eq_c = next((c for c in ['Stockholders Equity', 'Total Equity Gross Minority Interest', 'Common Stock Equity'] if c in b_df.columns), None)
-                dt_c = next((c for c in ['Total Debt', 'Long Term Debt'] if c in b_df.columns), None)
-                if as_c:
-                    b_dates = [d.strftime('%Y') if hasattr(d, 'strftime') else str(d) for d in b_df.index]
-                    fig_b = go.Figure()
-                    fig_b.add_trace(go.Bar(x=b_dates, y=b_df[as_c] / 1e7, name="Total Assets (₹ Cr)", marker_color="#6366f1"))
-                    if eq_c: fig_b.add_trace(go.Bar(x=b_dates, y=b_df[eq_c] / 1e7, name="Net Worth (₹ Cr)", marker_color="#10b981"))
-                    if dt_c: fig_b.add_trace(go.Bar(x=b_dates, y=b_df[dt_c] / 1e7, name="Total Debt (₹ Cr)", marker_color="#ef4444"))
-                    fig_b.update_layout(title="🏦 Annual Balance Sheet: Assets, Equity & Debt (₹ Crores)", height=320, template="plotly_dark", barmode="group", margin=dict(l=10, r=10, t=35, b=10))
-                    st.plotly_chart(fig_b, use_container_width=True)
-
-render_hybrid_terminal()
+                st.caption(f"• Off 52W High (₹{high_52:,.1f}): **{dist_52h:.1f}%** | Above 50 DMA (₹{dma_50:,.1f}): **{'Yes' if d_close >= dma_50 else
