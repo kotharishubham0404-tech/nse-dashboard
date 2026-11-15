@@ -650,4 +650,108 @@ def render_hybrid_terminal():
         with sc2:
             with st.container(border=True):
                 st.markdown(f"**🚀 52-Week High Breakout:** {'🟢 **QUALIFIES**' if pass_breakout else '⚪ **Watchlist**'}")
-                st.caption(f"• Off 52W High (₹{high_52:,.1f}): **{dist_52h:.1f}%** | Above 50 DMA (₹{dma_50:,.1f}): **{'Yes' if d_close >= dma_50 else
+                st.caption(f"• Off 52W High (₹{high_52:,.1f}): **{dist_52h:.1f}%** | Above 50 DMA (₹{dma_50:,.1f}): **{'Yes' if d_close >= dma_50 else 'No'}**")
+        with sc3:
+            with st.container(border=True):
+                st.markdown(f"**🏆 CANSLIM Growth & Momentum:** {'🟢 **QUALIFIES**' if pass_canslim else '⚪ **Watchlist**'}")
+                st.caption(f"• Above 50 & 200 DMA: **{'Yes' if (d_close >= dma_50 and d_close >= dma_200) else 'No'}** | ROE: **{f'{roe:.1f}%' if roe is not None else 'N/A'}**")
+
+        st.markdown(f"### 🏛️ Company Fundamentals & Financial Statements — `{fund.get('sector')}`")
+        f1, f2, f3, f4, f5, f6 = st.columns(6)
+        f1.metric("Market Cap", f"₹{mcap_cr:,.0f} Cr" if mcap_cr else "N/A")
+        f2.metric("Trailing P/E", f"{pe:.1f}x" if pe else "N/A")
+        f3.metric("P/B & Book Value", f"{pb:.2f}x (₹{bv:,.0f})" if (pb and bv) else (f"{pb:.2f}x" if pb else "N/A"))
+        f4.metric("ROE (%)", f"{roe:.1f}%" if roe is not None else "N/A")
+        f5.metric("Net Profit Margin", f"{net_m:.1f}%" if net_m is not None else "N/A")
+        f6.metric("Debt to Equity", f"{de:.1f}%" if de is not None else "N/A")
+
+        f7, f8, f9, f10, f11, f12 = st.columns(6)
+        f7.metric("52-Week High", f"₹{high_52:,.2f}" if high_52 else "N/A")
+        f8.metric("52-Week Low", f"₹{low_52:,.2f}" if low_52 else "N/A")
+        f9.metric("50 & 200 DMA", f"₹{dma_50:,.0f} / ₹{dma_200:,.0f}")
+        f10.metric("Qtr Profit Growth", f"{qtr_gr:+.1f}%" if qtr_gr is not None else "N/A")
+        f11.metric("Dividend Yield", f"{div_y:.2f}%" if div_y is not None else "N/A")
+        f12.metric("Promoter Holding", f"{prom:.1f}%" if prom is not None else "N/A")
+
+        ch1, ch2 = st.columns(2)
+        with ch1:
+            if not q_inc.empty:
+                q_df = q_inc.T.sort_index()
+                rev_c = next((c for c in ['Total Revenue', 'Operating Revenue'] if c in q_df.columns), None)
+                net_c = next((c for c in ['Net Income', 'Net Income Common Stockholders'] if c in q_df.columns), None)
+                if rev_c and net_c:
+                    dates = [d.strftime('%b %Y') if hasattr(d, 'strftime') else str(d) for d in q_df.index]
+                    fig_q = go.Figure()
+                    fig_q.add_trace(go.Bar(x=dates, y=q_df[rev_c] / 1e7, name="Revenue (₹ Cr)", marker_color="#38bdf8"))
+                    fig_q.add_trace(go.Bar(x=dates, y=q_df[net_c] / 1e7, name="Net Profit (₹ Cr)", marker_color="#10b981"))
+                    fig_q.update_layout(title="📊 Quarterly Revenue vs. Net Profit (₹ Crores)", height=320, template="plotly_dark", barmode="group", margin=dict(l=10, r=10, t=35, b=10))
+                    st.plotly_chart(fig_q, use_container_width=True)
+
+        with ch2:
+            if not bal_sheet.empty:
+                b_df = bal_sheet.T.sort_index()
+                as_c = next((c for c in ['Total Assets'] if c in b_df.columns), None)
+                eq_c = next((c for c in ['Stockholders Equity', 'Total Equity Gross Minority Interest', 'Common Stock Equity'] if c in b_df.columns), None)
+                dt_c = next((c for c in ['Total Debt', 'Long Term Debt'] if c in b_df.columns), None)
+                if as_c:
+                    b_dates = [d.strftime('%Y') if hasattr(d, 'strftime') else str(d) for d in b_df.index]
+                    fig_b = go.Figure()
+                    fig_b.add_trace(go.Bar(x=b_dates, y=b_df[as_c] / 1e7, name="Total Assets (₹ Cr)", marker_color="#6366f1"))
+                    if eq_c: fig_b.add_trace(go.Bar(x=b_dates, y=b_df[eq_c] / 1e7, name="Net Worth (₹ Cr)", marker_color="#10b981"))
+                    if dt_c: fig_b.add_trace(go.Bar(x=b_dates, y=b_df[dt_c] / 1e7, name="Total Debt (₹ Cr)", marker_color="#ef4444"))
+                    fig_b.update_layout(title="🏦 Annual Balance Sheet: Assets, Equity & Debt (₹ Crores)", height=320, template="plotly_dark", barmode="group", margin=dict(l=10, r=10, t=35, b=10))
+                    st.plotly_chart(fig_b, use_container_width=True)
+
+render_hybrid_terminal()
+
+# ==============================================================================
+# 6. ONE-CLICK PEER COMPARISON FOR SELECTED INDEX
+# ==============================================================================
+with st.expander(f"🔍 Scan & Compare All Peer Stocks in [{selected_group}]", expanded=False):
+    peer_list = available_symbols[:25]
+    if st.button(f"🚀 Scan {len(peer_list)} Stocks in {selected_group.split('(')[0].strip()}", type="primary"):
+        rows = []
+        prog = st.progress(0)
+        for i, s in enumerate(peer_list):
+            try:
+                t_s = s if s.startswith("^") else f"{s}{suffix}"
+                u_key = UPSTOX_INST_MAP.get(s)
+                h = pd.DataFrame()
+                if active_token and u_key:
+                    h = fetch_upstox_candles(u_key, "3mo", "1d", active_token)
+                if h.empty:
+                    h, _ = fetch_yf_price_history(t_s, "3mo", "1d")
+
+                if not h.empty and len(h) >= 15:
+                    c = float(h['Close'].iloc[-1])
+                    prev_c = float(h['Close'].iloc[-2])
+                    chg_p = (c - prev_c) / prev_c * 100
+                    sma50 = float(h['Close'].rolling(50, min_periods=1).mean().iloc[-1])
+                    h52 = float(h['High'].max())
+                    off_52 = (h52 - c) / h52 * 100 if h52 else 0
+
+                    rec = h.tail(5)
+                    hl = (rec['High'] - rec['Low']).replace(0, np.nan)
+                    br = ((rec['Close'] - rec['Low']) / hl).fillna(0.5).clip(0, 1)
+                    in_v = float((rec['Volume'] * br).sum())
+                    tot_v = float(rec['Volume'].sum())
+                    in_p = (in_v / tot_v * 100) if tot_v > 0 else 50.0
+                    net_cr_5d = float((((rec['Volume'] * br) - (rec['Volume'] * (1 - br))) * ((rec['High'] + rec['Low'] + rec['Close']) / 3)).sum() / 1e7)
+
+                    rows.append({
+                        "Symbol": s,
+                        "Company": COMPANY_NAMES.get(s, s)[:26],
+                        "Price (₹)": round(c, 2),
+                        "1D Chg (%)": round(chg_p, 2),
+                        "🟢 5D Buy Inflow (%)": round(in_p, 1),
+                        "5D Net Flow (₹ Cr)": round(net_cr_5d, 2),
+                        "50 DMA (₹)": round(sma50, 1),
+                        "Off 52W High (%)": round(off_52, 1),
+                        "Trend & Flow Signal": "🟢 Breakout + Inflow" if (c >= sma50 and in_p >= 52) else ("🔴 Below 50 DMA" if c < sma50 else "🟡 Neutral")
+                    })
+            except Exception:
+                pass
+            prog.progress((i + 1) / len(peer_list))
+        prog.empty()
+        if rows:
+            st.dataframe(pd.DataFrame(rows).sort_values(by="5D Net Flow (₹ Cr)", ascending=False), use_container_width=True, hide_index=True)
