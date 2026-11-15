@@ -44,7 +44,11 @@ def get_all_nse_stocks():
             "BAJFINANCE | Bajaj Finance Limited",
             "HAL | Hindustan Aeronautics Limited",
             "TRENT | Trent Limited",
-            "BEL | Bharat Electronics Limited"
+            "BEL | Bharat Electronics Limited",
+            "NTPC | NTPC Limited",
+            "ONGC | Oil and Natural Gas Corporation",
+            "COALINDIA | Coal India Limited",
+            "SUNPHARMA | Sun Pharmaceutical Industries Limited"
         ]
         return indices + fallback
 
@@ -86,11 +90,12 @@ show_rsi = st.sidebar.checkbox("RSI (14) Momentum", value=True)
 
 st.title(f"🇮🇳 {company_name} ({raw_symbol})")
 
-# --- 3. CREATE 3 ORGANIZED TABS ---
-tab1, tab2, tab3 = st.tabs([
-    "📈 Live Technical Chart & Signals",
-    "🏛️ Fundamental Ratios & Valuation",
-    "🔍 Multi-Stock NSE Screener"
+# --- 3. CREATE 4 ORGANIZED TABS ---
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📈 Live Chart & Signals",
+    "🏛️ Fundamental Ratios",
+    "🔍 Quick Watchlist Scanner",
+    "🎯 Strategy Screener (Value, Breakout & CANSLIM)"
 ])
 
 # === TAB 1: TECHNICAL CHART & AUTO SIGNALS ===
@@ -105,17 +110,14 @@ with tab1:
                 st.warning("No price data returned. Try switching to 'Historical Swing (Daily)' mode during non-market hours.")
                 return
 
-            # Calculate Indicators
             df['SMA_20'] = df['Close'].rolling(window=20).mean()
             df['SMA_50'] = df['Close'].rolling(window=50).mean()
             df['SMA_200'] = df['Close'].rolling(window=200).mean()
 
-            # Bollinger Bands
             std_20 = df['Close'].rolling(window=20).std()
             df['BB_Upper'] = df['SMA_20'] + (std_20 * 2)
             df['BB_Lower'] = df['SMA_20'] - (std_20 * 2)
 
-            # RSI (14)
             delta = df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -130,7 +132,6 @@ with tab1:
             sma20_val = df['SMA_20'].iloc[-1]
             sma50_val = df['SMA_50'].iloc[-1]
 
-            # Automated Technical Verdict
             if not pd.isna(sma20_val) and not pd.isna(sma50_val):
                 if latest > sma20_val and sma20_val > sma50_val:
                     signal_text = "🟢 BULLISH UPTREND (Price > 20 SMA > 50 SMA)"
@@ -202,7 +203,6 @@ with tab2:
         debt_eq = info.get("debtToEquity")
         high_52 = info.get("fiftyTwoWeekHigh")
         low_52 = info.get("fiftyTwoWeekLow")
-        div_yield = info.get("dividendYield")
 
         f1, f2, f3, f4 = st.columns(4)
         f1.metric("Market Cap", f"₹{mcap_cr:,.0f} Cr" if mcap_cr else "N/A")
@@ -224,7 +224,7 @@ with tab2:
     except Exception as e:
         st.warning(f"Fundamental data unavailable for this symbol: {e}")
 
-# === TAB 3: MULTI-STOCK NSE SCREENER ===
+# === TAB 3: QUICK WATCHLIST SCANNER ===
 with tab3:
     st.subheader("🔍 Custom NSE Watchlist & Momentum Scanner")
     default_basket = "RELIANCE, TCS, HDFCBANK, INFY, SBIN, ICICIBANK, TATAMOTORS, LT, HAL, BAJFINANCE"
@@ -267,3 +267,150 @@ with tab3:
         if results:
             scan_df = pd.DataFrame(results).sort_values(by="1D Change (%)", ascending=False)
             st.dataframe(scan_df, use_container_width=True, hide_index=True)
+
+# === TAB 4: STRATEGY SCREENER (VALUE, 52W BREAKOUT & CANSLIM) ===
+with tab4:
+    st.subheader("🎯 Institutional Strategy Screener (NSE India)")
+    st.caption("Filter NSE stocks by Deep Value (Low P/B), 52-Week High Breakouts, or William O'Neil's CANSLIM Growth & Momentum criteria.")
+
+    col_a, col_b = st.columns([1, 2])
+    with col_a:
+        strategy_choice = st.radio(
+            "Select Screening Strategy:",
+            [
+                "📊 All Metrics Scorecard (No Filter)",
+                "💎 Low P/B & Value Picks",
+                "🚀 52-Week High Breakouts",
+                "🏆 CANSLIM Growth & Momentum"
+            ]
+        )
+
+    with col_b:
+        preset_universe = st.selectbox(
+            "Choose NSE Stock Basket to Scan:",
+            [
+                "Nifty Bluechip & Sector Leaders (20 Stocks)",
+                "PSU & Deep Value Basket (15 Stocks)",
+                "Defense, Railways & Capex Momentum (15 Stocks)",
+                "Custom Symbol List"
+            ]
+        )
+
+        baskets = {
+            "Nifty Bluechip & Sector Leaders (20 Stocks)": "RELIANCE, TCS, HDFCBANK, ICICIBANK, INFY, SBIN, BHARTIARTL, ITC, LT, TATAMOTORS, BAJFINANCE, SUNPHARMA, MARUTI, M&M, NTPC, POWERGRID, HINDUNILVR, AXISBANK, KOTAKBANK, ULTRACEMCO",
+            "PSU & Deep Value Basket (15 Stocks)": "SBIN, ONGC, COALINDIA, NTPC, POWERGRID, BANKBARODA, PNB, CANBK, IOC, BPCL, GAIL, NMDC, BHEL, NALCO, PFC",
+            "Defense, Railways & Capex Momentum (15 Stocks)": "HAL, BEL, MAZDOCK, BDL, COCHINSHIP, IRFC, RVNL, IRCON, TITAGARH, SIEMENS, ABB, CUMMINSIND, LT, TRENT, DIXON",
+            "Custom Symbol List": "RELIANCE, SBIN, HAL, BEL, ONGC, COALINDIA, TRENT, TATAMOTORS, NTPC, ITC"
+        }
+
+        custom_strategy_symbols = st.text_area(
+            "NSE Symbols to Scan (comma-separated — add or remove any NSE symbol):",
+            value=baskets[preset_universe],
+            height=68
+        )
+
+    # Interactive Filter Sliders
+    with st.expander("⚙️ Customize Strategy Filter Thresholds", expanded=True):
+        s1, s2, s3, s4 = st.columns(4)
+        max_pb = s1.slider("Max Price-to-Book (Value)", 0.5, 10.0, 3.0, 0.5)
+        max_pe = s2.slider("Max P/E Ratio (Value)", 5, 80, 25, 1)
+        max_dist_52w = s3.slider("Max Distance from 52W High (%)", 2, 30, 15, 1)
+        min_roe = s4.slider("Min Return on Equity - ROE (%)", 0, 40, 12, 1)
+
+    if st.button("🎯 Run Strategy Screener Now", type="primary"):
+        sym_list = [s.strip().upper().replace(".NS", "") for s in custom_strategy_symbols.split(",") if s.strip()]
+        strategy_rows = []
+        prog_bar = st.progress(0, text="Scanning NSE fundamentals and price action...")
+
+        for i, sym in enumerate(sym_list):
+            try:
+                tk = yf.Ticker(f"{sym}.NS")
+                hist = tk.history(period="1y", interval="1d")
+                info = tk.info
+
+                if not hist.empty and len(hist) >= 50:
+                    cmp_price = hist['Close'].iloc[-1]
+                    sma_50 = hist['Close'].rolling(50).mean().iloc[-1]
+                    sma_200 = hist['Close'].rolling(200).mean().iloc[-1] if len(hist) >= 200 else sma_50
+
+                    high_52w = info.get("fiftyTwoWeekHigh") or hist['High'].max()
+                    dist_from_high_pct = ((high_52w - cmp_price) / high_52w) * 100 if high_52w else 99.0
+
+                    # Volume surge vs 20-day avg
+                    vol_20 = hist['Volume'].rolling(20).mean().iloc[-1]
+                    latest_vol = hist['Volume'].iloc[-1]
+                    vol_ratio = (latest_vol / vol_20) if vol_20 and vol_20 > 0 else 1.0
+
+                    # Fundamental Metrics
+                    pb_val = info.get("priceToBook")
+                    pe_val = info.get("trailingPE")
+                    book_val = info.get("bookValue")
+                    roe_val = (info.get("returnOnEquity") * 100) if info.get("returnOnEquity") else None
+                    qtr_eps_growth = (info.get("earningsQuarterlyGrowth") * 100) if info.get("earningsQuarterlyGrowth") else None
+
+                    # 6-Month Relative Momentum Return (%)
+                    price_6m_ago = hist['Close'].iloc[-125] if len(hist) >= 125 else hist['Close'].iloc[0]
+                    ret_6m_pct = ((cmp_price - price_6m_ago) / price_6m_ago) * 100
+
+                    # Evaluate Strategy Badges
+                    is_value = (pb_val is not None and pb_val <= max_pb) and (pe_val is None or pe_val <= max_pe) and (roe_val is None or roe_val >= min_roe)
+                    is_breakout = (dist_from_high_pct <= max_dist_52w) and (cmp_price >= sma_50)
+                    is_canslim = (
+                        (dist_from_high_pct <= max_dist_52w)
+                        and (cmp_price >= sma_50)
+                        and (cmp_price >= sma_200)
+                        and (roe_val is not None and roe_val >= min_roe)
+                        and (qtr_eps_growth is None or qtr_eps_growth >= 15.0)
+                    )
+
+                    badges = []
+                    if is_value:
+                        badges.append("💎 Low P/B Value")
+                    if is_breakout:
+                        badges.append("🚀 52W Breakout")
+                    if is_canslim:
+                        badges.append("🏆 CANSLIM Leader")
+                    if not badges:
+                        badges.append("⚪ Watchlist")
+
+                    row_data = {
+                        "NSE Symbol": sym,
+                        "CMP (₹)": round(cmp_price, 2),
+                        "P/B Ratio": round(pb_val, 2) if pb_val else None,
+                        "Book Value (₹)": round(book_val, 2) if book_val else None,
+                        "P/E Ratio": round(pe_val, 2) if pe_val else None,
+                        "ROE (%)": round(roe_val, 1) if roe_val is not None else None,
+                        "Qtr Profit Gr (%)": round(qtr_eps_growth, 1) if qtr_eps_growth is not None else None,
+                        "Off 52W High (%)": round(dist_from_high_pct, 2),
+                        "6M Return (%)": round(ret_6m_pct, 1),
+                        "Vol vs 20D Avg": f"{vol_ratio:.2f}x",
+                        "Above 50 & 200 DMA": "✅ Yes" if (cmp_price >= sma_50 and cmp_price >= sma_200) else "❌ No",
+                        "Qualifies For": " | ".join(badges),
+                        "_is_value": is_value,
+                        "_is_breakout": is_breakout,
+                        "_is_canslim": is_canslim
+                    }
+                    strategy_rows.append(row_data)
+            except Exception:
+                pass
+            prog_bar.progress((i + 1) / len(sym_list), text=f"Scanned {sym} ({i+1}/{len(sym_list)})")
+
+        prog_bar.empty()
+
+        if strategy_rows:
+            df_strat = pd.DataFrame(strategy_rows)
+
+            if strategy_choice == "💎 Low P/B & Value Picks":
+                df_strat = df_strat[df_strat["_is_value"] == True].sort_values(by="P/B Ratio", ascending=True)
+            elif strategy_choice == "🚀 52-Week High Breakouts":
+                df_strat = df_strat[df_strat["_is_breakout"] == True].sort_values(by="Off 52W High (%)", ascending=True)
+            elif strategy_choice == "🏆 CANSLIM Growth & Momentum":
+                df_strat = df_strat[df_strat["_is_canslim"] == True].sort_values(by="6M Return (%)", ascending=False)
+
+            display_cols = [c for c in df_strat.columns if not c.startswith("_")]
+
+            if df_strat.empty:
+                st.warning("No stocks in the selected basket passed these strict filters. Try loosening the sliders in 'Customize Strategy Filter Thresholds' above!")
+            else:
+                st.success(f"Found **{len(df_strat)}** qualifying NSE stocks for **{strategy_choice}**")
+                st.dataframe(df_strat[display_cols], use_container_width=True, hide_index=True)
