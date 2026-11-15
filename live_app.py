@@ -11,7 +11,7 @@ import io
 st.set_page_config(page_title="NSE & BSE 360° Stock Analyzer", layout="wide")
 
 # ==============================================================================
-# 1. VERIFIED NSE & BSE INDEX CATALOG (CLEAN, ZERO-CLUTTER)
+# 1. VERIFIED NSE & BSE INDEX CATALOG
 # ==============================================================================
 
 COMPANY_NAMES = {
@@ -85,34 +85,199 @@ def load_master_stock_dict():
 
 MASTER_STOCK_DICT = load_master_stock_dict()
 
-@st.cache_data(ttl=600)
-def get_stock_360_data(yf_ticker):
+# ==============================================================================
+# 2. BULLETPROOF FUNDAMENTAL ENGINE (AUTO-FALLBACK TO .NS + STATEMENT MATH)
+# ==============================================================================
+@st.cache_data(ttl=900)
+def get_bulletproof_360_data(raw_sym, yf_ticker):
     tk = yf.Ticker(yf_ticker)
     hist_1y = pd.DataFrame()
     info = {}
+    fast = {}
     q_inc = pd.DataFrame()
+    a_inc = pd.DataFrame()
     bal_sheet = pd.DataFrame()
+
     try:
         hist_1y = tk.history(period="1y", interval="1d")
     except Exception:
         pass
-    if not yf_ticker.startswith("^"):
+
+    if not raw_sym.startswith("^"):
         try:
             info = tk.info or {}
         except Exception:
             info = {}
+
+        # Fallback 1: If BSE (.BO) is selected and lacks summary info, pull company info from NSE (.NS)
+        if yf_ticker.endswith(".BO") and (not info or info.get("marketCap") is None):
+            try:
+                ns_tk = yf.Ticker(f"{raw_sym}.NS")
+                ns_info = ns_tk.info or {}
+                for k, v in ns_info.items():
+                    if info.get(k) is None and v is not None:
+                        info[k] = v
+                if hist_1y.empty:
+                    hist_1y = ns_tk.history(period="1y", interval="1d")
+            except Exception:
+                pass
+
+        # Fallback 2: Fast Info (rarely rate-limited on Streamlit Cloud)
+        try:
+            fast = {
+                "market_cap": getattr(tk.fast_info, "market_cap", None),
+                "shares": getattr(tk.fast_info, "shares", None),
+                "year_high": getattr(tk.fast_info, "year_high", None),
+                "year_low": getattr(tk.fast_info, "year_low", None),
+            }
+        except Exception:
+            fast = {}
+
+        # Financial Statements
         try:
             q_inc = tk.quarterly_income_stmt
+            if q_inc is None or q_inc.empty:
+                q_inc = yf.Ticker(f"{raw_sym}.NS").quarterly_income_stmt
         except Exception:
             pass
+
+        try:
+            a_inc = tk.income_stmt
+            if a_inc is None or a_inc.empty:
+                a_inc = yf.Ticker(f"{raw_sym}.NS").income_stmt
+        except Exception:
+            pass
+
         try:
             bal_sheet = tk.balance_sheet
+            if bal_sheet is None or bal_sheet.empty:
+                bal_sheet = yf.Ticker(f"{raw_sym}.NS").balance_sheet
         except Exception:
             pass
-    return hist_1y, info, q_inc, bal_sheet
+
+    return hist_1y, info, fast, q_inc, a_inc, bal_sheet
+
+
+def compute_smart_fundamentals(info, fast, q_inc, a_inc, bal_sheet, current_price):
+    """Computes missing fundamentals directly from Financial Statements if Yahoo .info is rate-limited."""
+    res = {
+        "sector": info.get("sector") or "Indian Listed Equity",
+        "industry": info.get("industry") or "NSE / BSE",
+        "mcap_cr": None,
+        "pe": info.get("trailingPE"),
+        "fwd_pe": info.get("forwardPE"),
+        "pb": info.get("priceToBook"),
+        "bv": info.get("bookValue"),
+        "roe": (info.get("returnOnEquity") * 100) if info.get("returnOnEquity") is not None else None,
+        "op_margin": (info.get("operatingMargins") * 100) if info.get("operatingMargins") is not None else None,
+        "net_margin": (info.get("profitMargins") * 100) if info.get("profitMargins") is not None else None,
+        "de": info.get("debtToEquity"),
+        "qtr_gr": (info.get("earningsQuarterlyGrowth") * 100) if info.get("earningsQuarterlyGrowth") is not None else None,
+        "div_y": (info.get("dividendYield") * 100) if info.get("dividendYield") is not None else None,
+        "prom_pct": (info.get("heldPercentInsiders") * 100) if info.get("heldPercentInsiders") is not None else None,
+        "high_52": info.get("fiftyTwoWeekHigh") or fast.get("year_high"),
+        "low_52": info.get("fiftyTwoWeekLow") or fast.get("year_low"),
+    }
+
+    # 1. Market Cap & Shares
+    raw_mcap = info.get("marketCap") or fast.get("market_cap")
+    shares = info.get("sharesOutstanding") or fast.get("shares")
+
+    if not shares and bal_sheet is not None and not bal_sheet.empty:
+        b_df = bal_sheet.T.sort_index()
+        sh_col = next((c for c in ['Ordinary Shares Number', 'Share Issued', 'Common Stock'] if c in b_df.columns), None)
+        if sh_col and pd.notna(b_df[sh_col].dropna().iloc[-1]):
+            shares = float(b_df[sh_col].dropna().iloc[-1])
+
+    if not raw_mcap and shares and current_price:
+        raw_mcap = shares * current_price
+
+    if raw_mcap:
+        res["mcap_cr"] = raw_mcap / 1e7
+
+    # 2. Extract Balance Sheet Equity (Net Worth) & Total Debt
+    equity_val = None
+    debt_val = None
+    if bal_sheet is not None and not bal_sheet.empty:
+        b_df = bal_sheet.T.sort_index()
+        eq_col = next((c for c in ['Stockholders Equity', 'Common Stock Equity', 'Total Equity Gross Minority Interest'] if c in b_df.columns), None)
+        if eq_col and not b_df[eq_col].dropna().empty:
+            equity_val = float(b_df[eq_col].dropna().iloc[-1])
+
+        dt_col = next((c for c in ['Total Debt', 'Long Term Debt', 'Net Debt'] if c in b_df.columns), None)
+        if dt_col and not b_df[dt_col].dropna().empty:
+            debt_val = float(b_df[dt_col].dropna().iloc[-1])
+
+    # Calculate Book Value, P/B, and Debt/Equity from Balance Sheet if missing
+    if equity_val and equity_val > 0:
+        if res["pb"] is None and raw_mcap:
+            res["pb"] = raw_mcap / equity_val
+        if res["bv"] is None and res["pb"] and res["pb"] > 0:
+            res["bv"] = current_price / res["pb"]
+        elif res["bv"] is None and shares and shares > 0:
+            res["bv"] = equity_val / shares
+        if res["de"] is None and debt_val is not None:
+            res["de"] = (debt_val / equity_val) * 100.0
+
+    # 3. Extract TTM Revenue, Operating Income & Net Profit from Quarterly/Annual Income Statements
+    ttm_rev = None
+    ttm_op = None
+    ttm_net = None
+
+    if q_inc is not None and not q_inc.empty:
+        q_df = q_inc.T.sort_index()
+        rev_c = next((c for c in ['Total Revenue', 'Operating Revenue'] if c in q_df.columns), None)
+        op_c = next((c for c in ['Operating Income', 'EBIT', 'EBITDA'] if c in q_df.columns), None)
+        net_c = next((c for c in ['Net Income', 'Net Income Common Stockholders'] if c in q_df.columns), None)
+
+        if rev_c and not q_df[rev_c].dropna().empty:
+            recent_revs = q_df[rev_c].dropna().tail(4)
+            ttm_rev = float(recent_revs.sum()) * (4.0 / len(recent_revs))
+        if op_c and not q_df[op_c].dropna().empty:
+            recent_ops = q_df[op_c].dropna().tail(4)
+            ttm_op = float(recent_ops.sum()) * (4.0 / len(recent_ops))
+        if net_c and not q_df[net_c].dropna().empty:
+            net_series = q_df[net_c].dropna()
+            recent_nets = net_series.tail(4)
+            ttm_net = float(recent_nets.sum()) * (4.0 / len(recent_nets))
+
+            # Calculate Quarterly Profit Growth (%) if missing
+            if res["qtr_gr"] is None and len(net_series) >= 2:
+                latest_q = float(net_series.iloc[-1])
+                base_q = float(net_series.iloc[-5]) if len(net_series) >= 5 else float(net_series.iloc[-2])
+                if base_q != 0:
+                    res["qtr_gr"] = ((latest_q - base_q) / abs(base_q)) * 100.0
+
+    # Fallback to Annual Income Statement if Quarterly wasn't enough
+    if (ttm_net is None or ttm_rev is None) and a_inc is not None and not a_inc.empty:
+        a_df = a_inc.T.sort_index()
+        rev_c = next((c for c in ['Total Revenue', 'Operating Revenue'] if c in a_df.columns), None)
+        op_c = next((c for c in ['Operating Income', 'EBIT', 'EBITDA'] if c in a_df.columns), None)
+        net_c = next((c for c in ['Net Income', 'Net Income Common Stockholders'] if c in a_df.columns), None)
+        if ttm_rev is None and rev_c and not a_df[rev_c].dropna().empty:
+            ttm_rev = float(a_df[rev_c].dropna().iloc[-1])
+        if ttm_op is None and op_c and not a_df[op_c].dropna().empty:
+            ttm_op = float(a_df[op_c].dropna().iloc[-1])
+        if ttm_net is None and net_c and not a_df[net_c].dropna().empty:
+            ttm_net = float(a_df[net_c].dropna().iloc[-1])
+
+    # Calculate P/E, ROE, Operating Margin & Net Profit Margin from Statement Totals
+    if ttm_net and ttm_net > 0:
+        if res["pe"] is None and raw_mcap:
+            res["pe"] = raw_mcap / ttm_net
+        if res["roe"] is None and equity_val and equity_val > 0:
+            res["roe"] = (ttm_net / equity_val) * 100.0
+
+    if ttm_rev and ttm_rev > 0:
+        if res["net_margin"] is None and ttm_net is not None:
+            res["net_margin"] = (ttm_net / ttm_rev) * 100.0
+        if res["op_margin"] is None and ttm_op is not None:
+            res["op_margin"] = (ttm_op / ttm_rev) * 100.0
+
+    return res
 
 # ==============================================================================
-# 2. CLEAN, UNIFIED SIDEBAR (NO DUPLICATE FIELDS)
+# 3. CLEAN, UNIFIED SIDEBAR
 # ==============================================================================
 st.sidebar.header("🇮🇳 Stock Search & Controls")
 
@@ -185,7 +350,7 @@ overlays = st.sidebar.multiselect(
 refresh_rate = st.sidebar.slider("6. Auto-Refresh (Seconds):", 5, 60, 10)
 
 # ==============================================================================
-# 3. MAIN 360° STOCK VIEW (ALL DETAILS ON SINGLE STOCK SELECTION)
+# 4. MAIN 360° STOCK VIEW
 # ==============================================================================
 st.title(f"🇮🇳 {company_name} ({yf_ticker})")
 
@@ -193,14 +358,13 @@ st.title(f"🇮🇳 {company_name} ({yf_ticker})")
 def render_360_stock_dashboard():
     stock = yf.Ticker(yf_ticker)
     df = stock.history(period=period, interval=interval)
-    hist_1y, info, q_inc, bal_sheet = get_stock_360_data(yf_ticker)
+    hist_1y, info, fast, q_inc, a_inc, bal_sheet = get_bulletproof_360_data(raw_symbol, yf_ticker)
 
-    # Fallback to 1Y daily data if market is closed or intraday is empty
     if df.empty and not hist_1y.empty:
         df = hist_1y.copy()
         st.caption("ℹ️ Intraday feed unavailable for this symbol right now; displaying Daily chart.")
     elif df.empty:
-        st.error(f"Could not load market data for {yf_ticker}. Try switching Exchange or selecting another stock.")
+        st.error(f"Could not load market data for {yf_ticker}. Try switching Exchange to NSE (.NS) or selecting another stock.")
         return
 
     # --- A. VOLUME INFLOW & OUTFLOW CALCULATIONS ---
@@ -237,8 +401,8 @@ def render_360_stock_dashboard():
     df['MFI'] = (100 - (100 / (1 + (pos_mf / neg_mf.replace(0, np.nan))))).fillna(50)
 
     # --- C. SECTION 1: LIVE PRICE & VOLUME INFLOW/OUTFLOW SCOREBOARD ---
-    latest = df['Close'].iloc[-1]
-    prev = df['Open'].iloc[0] if interval in ["1m", "5m", "15m"] else (df['Close'].iloc[-2] if len(df) > 1 else latest)
+    latest = float(df['Close'].iloc[-1])
+    prev = float(df['Open'].iloc[0]) if interval in ["1m", "5m", "15m"] else (float(df['Close'].iloc[-2]) if len(df) > 1 else latest)
     chg = latest - prev
     pct = (chg / prev) * 100
 
@@ -255,19 +419,18 @@ def render_360_stock_dashboard():
     mfi_val = df['MFI'].iloc[-1]
     rsi_val = df['RSI'].iloc[-1]
 
-    k1, k2, k3, k4, k5 = st.columns(5)
+    k1, k2, k3, k4 = st.columns(4)
     k1.metric("Live Price (₹)", f"₹{latest:,.2f}", f"{chg:+.2f} ({pct:+.2f}%)")
     k2.metric("🟢 Buyer Volume Inflow", f"{int(in_vol):,}", f"₹{in_cr:,.2f} Cr ({in_pct:.1f}%)")
     k3.metric("🔴 Seller Volume Outflow", f"{int(out_vol):,}", f"-₹{out_cr:,.2f} Cr ({out_pct:.1f}%)", delta_color="inverse")
-    k4.metric("⚡ Net Volume Flow", f"{int(net_vol):+,}", f"Net ₹{net_cr:+,.2f} Cr")
-    k5.metric("RSI (14) / MFI (14)", f"{rsi_val:.1f} / {mfi_val:.1f}", "🟢 Accumulation" if net_vol > 0 else "🔴 Distribution", delta_color="off")
+    k4.metric("⚡ Net Volume Flow", f"{int(net_vol):+,}", f"Net ₹{net_cr:+,.2f} Cr | MFI: {mfi_val:.0f}")
 
     st.markdown(
         f"""
         <div style="background:#1e293b; padding:9px 14px; border-radius:8px; margin-bottom:10px; border:1px solid #334155;">
             <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:4px;">
                 <span style="color:#10b981;">🟢 BUYER INFLOW: {in_pct:.1f}% ({int(in_vol):,} shares | ₹{in_cr:,.2f} Cr)</span>
-                <span style="color:#94a3b8;">Updated: {datetime.now().strftime('%H:%M:%S')} | Last Bar Delta: {int(df['Net_Delta'].iloc[-1]):+,}</span>
+                <span style="color:#94a3b8;">Updated: {datetime.now().strftime('%H:%M:%S')} | RSI(14): {rsi_val:.1f} | Last Bar Delta: {int(df['Net_Delta'].iloc[-1]):+,}</span>
                 <span style="color:#ef4444;">🔴 SELLER OUTFLOW: {out_pct:.1f}% ({int(out_vol):,} shares | ₹{out_cr:,.2f} Cr)</span>
             </div>
             <div style="width:100%; height:10px; background:#ef4444; border-radius:5px; overflow:hidden;">
@@ -306,179 +469,4 @@ def render_360_stock_dashboard():
         fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], line=dict(color='rgba(148,163,184,0.4)', width=1), fill='tonexty', fillcolor='rgba(148,163,184,0.07)', name="BB Lower"), row=1, col=1)
 
     fig.add_trace(go.Bar(x=df.index, y=df['Buy_Vol'], marker_color='#10b981', name="Inflow Vol (Buy)"), row=2, col=1)
-    fig.add_trace(go.Bar(x=df.index, y=-df['Sell_Vol'], marker_color='#ef4444', name="Outflow Vol (Sell)"), row=2, col=1)
-
-    r_idx = 3
-    if show_cvd:
-        cvd_col = '#10b981' if df['CVD'].iloc[-1] >= 0 else '#ef4444'
-        fig.add_trace(go.Scatter(
-            x=df.index, y=df['CVD'], mode='lines', line=dict(color=cvd_col, width=2),
-            fill='tozeroy', fillcolor='rgba(16,185,129,0.12)' if df['CVD'].iloc[-1] >= 0 else 'rgba(239,68,68,0.12)',
-            name="CVD"
-        ), row=r_idx, col=1)
-        r_idx += 1
-
-    if show_osc:
-        fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='#a855f7', width=1.5), name="RSI (14)"), row=r_idx, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['MFI'], line=dict(color='#22d3ee', width=1.5, dash='dot'), name="MFI (14)"), row=r_idx, col=1)
-        fig.add_hline(y=70, line_dash="dash", line_color="#ef4444", row=r_idx, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color="#10b981", row=r_idx, col=1)
-
-    fig.update_layout(height=700, template="plotly_dark", barmode="relative", xaxis_rangeslider_visible=False, margin=dict(l=15, r=15, t=25, b=10), uirevision=f"{yf_ticker}_{timeframe_label}")
-    st.plotly_chart(fig, use_container_width=True)
-
-    # --- E. SECTION 3: INSTANT STRATEGY QUALIFICATION & FUNDAMENTAL 360° REPORT ---
-    if not raw_symbol.startswith("^") and not hist_1y.empty:
-        d_close = hist_1y['Close'].iloc[-1]
-        dma_50 = hist_1y['Close'].rolling(50).mean().iloc[-1] if len(hist_1y) >= 50 else d_close
-        dma_200 = hist_1y['Close'].rolling(200).mean().iloc[-1] if len(hist_1y) >= 200 else dma_50
-        high_52 = info.get("fiftyTwoWeekHigh") or hist_1y['High'].max()
-        low_52 = info.get("fiftyTwoWeekLow") or hist_1y['Low'].min()
-        dist_52h = ((high_52 - d_close) / high_52 * 100) if high_52 else 0.0
-
-        mcap_cr = info.get("marketCap", 0) / 1e7 if info.get("marketCap") else None
-        pe = info.get("trailingPE")
-        fwd_pe = info.get("forwardPE")
-        pb = info.get("priceToBook")
-        bv = info.get("bookValue")
-        roe = (info.get("returnOnEquity") * 100) if info.get("returnOnEquity") else None
-        op_margin = (info.get("operatingMargins") * 100) if info.get("operatingMargins") else None
-        net_margin = (info.get("profitMargins") * 100) if info.get("profitMargins") else None
-        de = info.get("debtToEquity")
-        qtr_gr = (info.get("earningsQuarterlyGrowth") * 100) if info.get("earningsQuarterlyGrowth") else None
-        div_y = (info.get("dividendYield") * 100) if info.get("dividendYield") else None
-        prom_pct = (info.get("heldPercentInsiders") * 100) if info.get("heldPercentInsiders") else None
-
-        # Strategy Evaluations for this Selected Stock
-        pass_value = (pb is not None and pb <= 3.5) and (pe is None or pe <= 28)
-        pass_breakout = (dist_52h <= 15.0) and (d_close >= dma_50) and (in_pct >= 50.0)
-        pass_canslim = (d_close >= dma_50) and (d_close >= dma_200) and (dist_52h <= 15.0) and (roe is None or roe >= 14.0)
-
-        st.markdown("### 🎯 Strategy Scorecard & Qualification for Selected Stock")
-        sc1, sc2, sc3 = st.columns(3)
-        with sc1:
-            with st.container(border=True):
-                st.markdown(f"**💎 Low P/B Value Strategy:** {'🟢 **QUALIFIES**' if pass_value else '⚪ **Does Not Qualify**'}")
-                st.caption(f"• Price-to-Book: **{pb:.2f}x** (Target ≤ 3.5x)" if pb else "• P/B: N/A")
-                st.caption(f"• Trailing P/E: **{pe:.1f}x** (Target ≤ 28x) | Book Value: **₹{bv:,.1f}**" if (pe and bv) else "• Valuation data partial")
-        with sc2:
-            with st.container(border=True):
-                st.markdown(f"**🚀 52-Week High Breakout:** {'🟢 **QUALIFIES**' if pass_breakout else '⚪ **Does Not Qualify**'}")
-                st.caption(f"• Distance from 52W High (₹{high_52:,.1f}): **{dist_52h:.1f}%** (Target ≤ 15%)")
-                st.caption(f"• Above 50 DMA (₹{dma_50:,.1f}): **{'Yes' if d_close >= dma_50 else 'No'}** | Buy Inflow: **{in_pct:.1f}%**")
-        with sc3:
-            with st.container(border=True):
-                st.markdown(f"**🏆 CANSLIM Leader Criteria:** {'🟢 **QUALIFIES**' if pass_canslim else '⚪ **Does Not Qualify**'}")
-                st.caption(f"• Above 50 & 200 DMA (₹{dma_200:,.1f}): **{'Yes' if (d_close >= dma_50 and d_close >= dma_200) else 'No'}**")
-                st.caption(f"• ROE: **{f'{roe:.1f}%' if roe else 'N/A'}** (Target ≥ 14%) | Qtr Profit Growth: **{f'{qtr_gr:+.1f}%' if qtr_gr else 'N/A'}**")
-
-        # --- F. SECTION 4: UNIFIED FUNDAMENTALS & FINANCIAL CHARTS (NO DUPLICATION) ---
-        st.markdown(f"### 🏛️ Company Fundamentals & Financial Statements — `{info.get('sector', 'Indian Equity')}` ({info.get('industry', 'NSE/BSE')})")
-
-        f1, f2, f3, f4, f5, f6 = st.columns(6)
-        f1.metric("Market Cap", f"₹{mcap_cr:,.0f} Cr" if mcap_cr else "N/A")
-        f2.metric("Trailing / Fwd P/E", f"{pe:.1f}x / {fwd_pe:.1f}x" if (pe and fwd_pe) else (f"{pe:.1f}x" if pe else "N/A"))
-        f3.metric("P/B & Book Value", f"{pb:.2f}x (₹{bv:,.0f})" if (pb and bv) else "N/A")
-        f4.metric("ROE (%)", f"{roe:.1f}%" if roe is not None else "N/A")
-        f5.metric("Operating / Net Margin", f"{op_margin:.1f}% / {net_margin:.1f}%" if (op_margin and net_margin) else "N/A")
-        f6.metric("Debt to Equity", f"{de:.1f}%" if de is not None else "N/A")
-
-        f7, f8, f9, f10, f11, f12 = st.columns(6)
-        f7.metric("52-Week High", f"₹{high_52:,.2f}" if high_52 else "N/A")
-        f8.metric("52-Week Low", f"₹{low_52:,.2f}" if low_52 else "N/A")
-        f9.metric("50-Day & 200-Day DMA", f"₹{dma_50:,.0f} / ₹{dma_200:,.0f}")
-        f10.metric("Qtr Profit Growth", f"{qtr_gr:+.1f}%" if qtr_gr is not None else "N/A")
-        f11.metric("Dividend Yield", f"{div_y:.2f}%" if div_y is not None else "N/A")
-        f12.metric("Promoter Holding", f"{prom_pct:.1f}%" if prom_pct is not None else "N/A")
-
-        ch1, ch2 = st.columns(2)
-        with ch1:
-            if not q_inc.empty:
-                q_df = q_inc.T.sort_index()
-                rev_c = next((c for c in ['Total Revenue', 'Operating Revenue'] if c in q_df.columns), None)
-                net_c = next((c for c in ['Net Income', 'Net Income Common Stockholders'] if c in q_df.columns), None)
-                if rev_c and net_c:
-                    dates = [d.strftime('%b %Y') if hasattr(d, 'strftime') else str(d) for d in q_df.index]
-                    fig_q = go.Figure()
-                    fig_q.add_trace(go.Bar(x=dates, y=q_df[rev_c] / 1e7, name="Quarterly Revenue (₹ Cr)", marker_color="#38bdf8"))
-                    fig_q.add_trace(go.Bar(x=dates, y=q_df[net_c] / 1e7, name="Net Profit (₹ Cr)", marker_color="#10b981"))
-                    fig_q.update_layout(title="📊 Quarterly Revenue vs. Net Profit (₹ Crores)", height=320, template="plotly_dark", barmode="group", margin=dict(l=10, r=10, t=35, b=10))
-                    st.plotly_chart(fig_q, use_container_width=True)
-
-        with ch2:
-            if not bal_sheet.empty:
-                b_df = bal_sheet.T.sort_index()
-                as_c = next((c for c in ['Total Assets'] if c in b_df.columns), None)
-                eq_c = next((c for c in ['Stockholders Equity', 'Total Equity Gross Minority Interest'] if c in b_df.columns), None)
-                dt_c = next((c for c in ['Total Debt', 'Long Term Debt'] if c in b_df.columns), None)
-                if as_c:
-                    b_dates = [d.strftime('%Y') if hasattr(d, 'strftime') else str(d) for d in b_df.index]
-                    fig_b = go.Figure()
-                    fig_b.add_trace(go.Bar(x=b_dates, y=b_df[as_c] / 1e7, name="Total Assets (₹ Cr)", marker_color="#6366f1"))
-                    if eq_c: fig_b.add_trace(go.Bar(x=b_dates, y=b_df[eq_c] / 1e7, name="Net Worth (₹ Cr)", marker_color="#10b981"))
-                    if dt_c: fig_b.add_trace(go.Bar(x=b_dates, y=b_df[dt_c] / 1e7, name="Total Debt (₹ Cr)", marker_color="#ef4444"))
-                    fig_b.update_layout(title="🏦 Annual Balance Sheet: Assets, Equity & Debt (₹ Crores)", height=320, template="plotly_dark", barmode="group", margin=dict(l=10, r=10, t=35, b=10))
-                    st.plotly_chart(fig_b, use_container_width=True)
-
-render_360_stock_dashboard()
-
-# ==============================================================================
-# 4. OPTIONAL PEER COMPARISON FOR SELECTED INDEX (NO RAW TEXT BOX CLUTTER)
-# ==============================================================================
-with st.expander(f"🔍 Compare All Peer Stocks in Selected Index [{selected_group}] (Volume Flow + Fundamentals + Strategy)", expanded=False):
-    peer_list = available_symbols[:30] if selected_group.startswith("🌐") else available_symbols
-    st.caption(f"One-click unified scanner for **{len(peer_list)} stocks** in **{selected_group}**. Combines Volume Inflow/Outflow, Valuation Ratios, and Strategy Badges in a single table.")
-
-    if st.button(f"🚀 Scan All {len(peer_list)} Stocks in {selected_group.split('(')[0].strip()}", type="primary"):
-        rows = []
-        prog = st.progress(0)
-        for i, s in enumerate(peer_list):
-            try:
-                t_s = s if s.startswith("^") else f"{s}{suffix}"
-                tk = yf.Ticker(t_s)
-                h = tk.history(period="3mo", interval="1d")
-                inf = tk.info if not s.startswith("^") else {}
-                if not h.empty and len(h) >= 20:
-                    c = h['Close'].iloc[-1]
-                    prev_c = h['Close'].iloc[-2]
-                    chg_p = (c - prev_c) / prev_c * 100
-                    sma50 = h['Close'].rolling(50).mean().iloc[-1] if len(h) >= 50 else c
-                    h52 = inf.get("fiftyTwoWeekHigh") or h['High'].max()
-                    off_52 = (h52 - c) / h52 * 100 if h52 else 0
-
-                    rec = h.tail(5)
-                    hl = (rec['High'] - rec['Low']).replace(0, np.nan)
-                    br = ((rec['Close'] - rec['Low']) / hl).fillna(0.5).clip(0, 1)
-                    in_v = (rec['Volume'] * br).sum()
-                    tot_v = rec['Volume'].sum()
-                    in_p = (in_v / tot_v * 100) if tot_v > 0 else 50.0
-                    net_cr_5d = (((rec['Volume'] * br) - (rec['Volume'] * (1 - br))) * ((rec['High'] + rec['Low'] + rec['Close']) / 3)).sum() / 1e7
-
-                    pb_v = inf.get("priceToBook")
-                    pe_v = inf.get("trailingPE")
-                    roe_v = (inf.get("returnOnEquity") * 100) if inf.get("returnOnEquity") else None
-
-                    tags = []
-                    if pb_v and pb_v <= 3.5: tags.append("💎 Value")
-                    if off_52 <= 15 and c >= sma50: tags.append("🚀 Breakout")
-                    if off_52 <= 15 and c >= sma50 and (roe_v and roe_v >= 14): tags.append("🏆 CANSLIM")
-
-                    rows.append({
-                        "Symbol": s,
-                        "Company": MASTER_STOCK_DICT.get(s, s)[:26],
-                        "Price (₹)": round(c, 2),
-                        "1D Chg (%)": round(chg_p, 2),
-                        "🟢 5D Buy Inflow (%)": round(in_p, 1),
-                        "5D Net Flow (₹ Cr)": round(net_cr_5d, 2),
-                        "P/E": round(pe_v, 1) if pe_v else None,
-                        "P/B": round(pb_v, 2) if pb_v else None,
-                        "ROE (%)": round(roe_v, 1) if roe_v else None,
-                        "Off 52W High (%)": round(off_52, 1),
-                        "Strategy Signals": " | ".join(tags) if tags else "⚪ Neutral"
-                    })
-            except Exception:
-                pass
-            prog.progress((i + 1) / len(peer_list))
-        prog.empty()
-        if rows:
-            st.dataframe(pd.DataFrame(rows).sort_values(by="5D Net Flow (₹ Cr)", ascending=False), use_container_width=True, hide_index=True)
+    fig.add_trace(go.Bar(x=df.index, y=-df['Sell_Vol'], marker_color='#ef4444', name="Outflow Vol (Sell)"), row=2,
