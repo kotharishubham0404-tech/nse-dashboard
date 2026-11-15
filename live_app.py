@@ -4,12 +4,17 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime
+from datetime import datetime, timedelta
+import requests
+import urllib.parse
+import gzip
+import json
+import io
 
-st.set_page_config(page_title="NSE & BSE 360° Stock Analyzer", layout="wide")
+st.set_page_config(page_title="NSE & BSE 360° Upstox Pro Terminal", layout="wide")
 
 # ==============================================================================
-# 1. VERIFIED NSE & BSE STOCK CATALOG (STOCKS FIRST SO DATA LOADS IMMEDIATELY)
+# 1. VERIFIED NSE & BSE CATALOG + BUILT-IN UPSTOX INSTRUMENT KEY DIRECTORY
 # ==============================================================================
 
 COMPANY_NAMES = {
@@ -41,10 +46,10 @@ COMPANY_NAMES = {
     "RVNL": "Rail Vikas Nigam Ltd", "MAZDOCK": "Mazagon Dock Shipbuilders", "BDL": "Bharat Dynamics Ltd",
     "COCHINSHIP": "Cochin Shipyard Ltd", "BHEL": "Bharat Heavy Electricals", "SIEMENS": "Siemens Ltd",
     "ABB": "ABB India Ltd", "CGPOWER": "CG Power & Industrial Solutions", "CUMMINSIND": "Cummins India Ltd",
-    "POLYCAB": "Polycab India Ltd", "KEI": "KEI Industries Ltd", "SUZLON": "Suzlon Energy Ltd",
-    "BAJAJ-AUTO": "Bajaj Auto Ltd", "EICHERMOT": "Eicher Motors Ltd", "HEROMOTOCO": "Hero MotoCorp Ltd",
-    "TVSMOTOR": "TVS Motor Company", "ASHOKLEY": "Ashok Leyland Ltd", "BHARATFORG": "Bharat Forge Ltd",
-    "MRF": "MRF Ltd", "APOLLOHOSP": "Apollo Hospitals Enterprise", "MAXHEALTH": "Max Healthcare Institute",
+    "POLYCAB": "Polycab India Ltd", "SUZLON": "Suzlon Energy Ltd", "BAJAJ-AUTO": "Bajaj Auto Ltd",
+    "EICHERMOT": "Eicher Motors Ltd", "HEROMOTOCO": "Hero MotoCorp Ltd", "TVSMOTOR": "TVS Motor Company",
+    "ASHOKLEY": "Ashok Leyland Ltd", "BHARATFORG": "Bharat Forge Ltd", "MRF": "MRF Ltd",
+    "APOLLOHOSP": "Apollo Hospitals Enterprise", "MAXHEALTH": "Max Healthcare Institute",
     "DRREDDY": "Dr. Reddy's Laboratories", "CIPLA": "Cipla Ltd", "DIVISLAB": "Divi's Laboratories",
     "LUPIN": "Lupin Ltd", "ZYDUSLIFE": "Zydus Lifesciences", "BSE": "BSE Ltd", "MCX": "Multi Commodity Exchange",
     "CDSL": "Central Depository Services", "ANGELONE": "Angel One Ltd", "JIOFIN": "Jio Financial Services",
@@ -53,6 +58,33 @@ COMPANY_NAMES = {
     "NMDC": "NMDC Ltd", "SAIL": "Steel Authority of India", "NATIONALUM": "National Aluminium Co",
     "^NSEI": "NSE Nifty 50 Index", "^BSESN": "BSE Sensex 30 Index", "^NSEBANK": "NSE Nifty Bank Index",
     "^CNXIT": "NSE Nifty IT Index", "^CNXPHARMA": "NSE Nifty Pharma Index", "^CNXAUTO": "NSE Nifty Auto Index"
+}
+
+# Built-in instant Upstox Instrument Keys for top NSE stocks & indices (Zero download delay)
+CORE_UPSTOX_KEYS = {
+    "^NSEI": "NSE_INDEX|Nifty 50", "^BSESN": "BSE_INDEX|SENSEX", "^NSEBANK": "NSE_INDEX|Nifty Bank",
+    "^CNXIT": "NSE_INDEX|Nifty IT", "^CNXPHARMA": "NSE_INDEX|Nifty Pharma", "^CNXAUTO": "NSE_INDEX|Nifty Auto",
+    "RELIANCE": "NSE_EQ|INE002A01018", "TCS": "NSE_EQ|INE467B01029", "HDFCBANK": "NSE_EQ|INE040A01034",
+    "ICICIBANK": "NSE_EQ|INE090A01021", "SBIN": "NSE_EQ|INE062A01020", "INFY": "NSE_EQ|INE009A01021",
+    "BHARTIARTL": "NSE_EQ|INE397D01024", "ITC": "NSE_EQ|INE154A01025", "LT": "NSE_EQ|INE018A01030",
+    "TATAMOTORS": "NSE_EQ|INE155A01022", "BAJFINANCE": "NSE_EQ|INE296A01024", "HAL": "NSE_EQ|INE066F01020",
+    "BEL": "NSE_EQ|INE263A01024", "TRENT": "NSE_EQ|INE849A01020", "SUNPHARMA": "NSE_EQ|INE044A01036",
+    "MARUTI": "NSE_EQ|INE585B01010", "M&M": "NSE_EQ|INE101A01026", "NTPC": "NSE_EQ|INE733E01010",
+    "POWERGRID": "NSE_EQ|INE752E01010", "ONGC": "NSE_EQ|INE213A01029", "COALINDIA": "NSE_EQ|INE522F01014",
+    "TATASTEEL": "NSE_EQ|INE081A01020", "JSWSTEEL": "NSE_EQ|INE019A01038", "HINDALCO": "NSE_EQ|INE038A01020",
+    "VEDL": "NSE_EQ|INE205A01025", "KOTAKBANK": "NSE_EQ|INE237A01028", "AXISBANK": "NSE_EQ|INE238A01034",
+    "INDUSINDBK": "NSE_EQ|INE095A01012", "BANKBARODA": "NSE_EQ|INE028A01039", "PNB": "NSE_EQ|INE160A01022",
+    "CANBK": "NSE_EQ|INE476A01022", "HCLTECH": "NSE_EQ|INE860A01027", "WIPRO": "NSE_EQ|INE075A01022",
+    "TECHM": "NSE_EQ|INE669C01036", "LTIM": "NSE_EQ|INE214T01019", "ULTRACEMCO": "NSE_EQ|INE481G01011",
+    "TITAN": "NSE_EQ|INE280A01028", "ASIANPAINT": "NSE_EQ|INE021A01026", "HINDUNILVR": "NSE_EQ|INE030A01027",
+    "NESTLEIND": "NSE_EQ|INE239A01024", "BRITANNIA": "NSE_EQ|INE216A01030", "ADANIENT": "NSE_EQ|INE423A01024",
+    "ADANIPORTS": "NSE_EQ|INE742F01042", "BAJAJ-AUTO": "NSE_EQ|INE917I01010", "EICHERMOT": "NSE_EQ|INE066A01021",
+    "HEROMOTOCO": "NSE_EQ|INE158A01026", "APOLLOHOSP": "NSE_EQ|INE437A01024", "DRREDDY": "NSE_EQ|INE089A01031",
+    "CIPLA": "NSE_EQ|INE059A01026", "DIVISLAB": "NSE_EQ|INE361B01024", "BPCL": "NSE_EQ|INE029A01011",
+    "SHRIRAMFIN": "NSE_EQ|INE721A01013", "BAJAJFINSV": "NSE_EQ|INE918I01026", "DLF": "NSE_EQ|INE271C01023",
+    "PFC": "NSE_EQ|INE134E01011", "RECLTD": "NSE_EQ|INE020B01018", "IRFC": "NSE_EQ|INE053F01010",
+    "RVNL": "NSE_EQ|INE415G01027", "BHEL": "NSE_EQ|INE257A01026", "SUZLON": "NSE_EQ|INE040H01021",
+    "ZOMATO": "NSE_EQ|INE758T01015", "JIOFIN": "NSE_EQ|INE758E01017", "BSE": "NSE_EQ|INE118H01025"
 }
 
 INDEX_GROUPS = {
@@ -70,15 +102,104 @@ INDEX_GROUPS = {
     "🏢 NIFTY REALTY & INFRA (10 Stocks)": ["DLF", "LODHA", "GODREJPROP", "OBEROIRLTY", "PRESTIGE", "LT", "ULTRACEMCO", "AMBUJACEM", "GRASIM", "IRB"],
     "💰 NIFTY FIN SERVICES & CAPITAL MARKETS (12 Stocks)": ["BAJFINANCE", "BAJAJFINSV", "JIOFIN", "CHOLAFIN", "SHRIRAMFIN", "PFC", "RECLTD", "BSE", "MCX", "CDSL", "ANGELONE", "MUTHOOTFIN"],
     "🌐 All Listed Stocks & Indices (Full Catalog)": list(COMPANY_NAMES.keys()),
-    "📊 Benchmark Indices Only (Nifty 50, Sensex, Bank Nifty)": ["^NSEI", "^BSESN", "^NSEBANK", "^CNXIT", "^CNXPHARMA", "^CNXAUTO"]
+    "📊 Benchmark Indices Only": ["^NSEI", "^BSESN", "^NSEBANK", "^CNXIT", "^CNXPHARMA", "^CNXAUTO"]
 }
 
 # ==============================================================================
-# 2. SELF-HEALING CACHED DATA ENGINE (PREVENTS CLOUD RATE-LIMITING & N/A BUGS)
+# 2. UPSTOX API v2 ENGINE (SUPPORTS DIRECT ACCESS OR ANALYTICS TOKEN)
+# ==============================================================================
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_upstox_instrument_map():
+    inst_map = dict(CORE_UPSTOX_KEYS)
+    try:
+        url = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.csv.gz"
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            with gzip.GzipFile(fileobj=io.BytesIO(resp.content)) as gz:
+                df_inst = pd.read_csv(gz)
+            eq_df = df_inst[df_inst['instrument_type'].isin(['EQ', 'BE', 'INDEX'])]
+            for _, row in eq_df.iterrows():
+                sym = str(row.get('tradingsymbol', '')).strip().upper()
+                ikey = str(row.get('instrument_key', '')).strip()
+                if sym and ikey:
+                    inst_map[sym] = ikey
+    except Exception:
+        pass
+    return inst_map
+
+UPSTOX_INST_MAP = load_upstox_instrument_map()
+
+def clean_token(raw_tok):
+    if not raw_tok:
+        return ""
+    t = raw_tok.strip()
+    if t.lower().startswith("bearer "):
+        t = t[7:].strip()
+    return t
+
+def fetch_upstox_live_quote(instrument_key, access_token):
+    headers = {"Accept": "application/json", "Authorization": f"Bearer {access_token}"}
+    url = "https://api.upstox.com/v2/market-quote/quotes"
+    try:
+        r = requests.get(url, headers=headers, params={"instrument_key": instrument_key}, timeout=6)
+        if r.status_code == 200:
+            data = r.json().get("data", {})
+            if data:
+                return list(data.values())[0], None
+        elif r.status_code == 401:
+            return None, "Token expired or invalid (401 Unauthorized). Please generate a fresh Upstox Token."
+        else:
+            return None, f"Upstox API Status {r.status_code}"
+    except Exception as e:
+        return None, str(e)
+    return None, None
+
+def fetch_upstox_candles(instrument_key, period, interval, access_token):
+    headers = {"Accept": "application/json", "Authorization": f"Bearer {access_token}"}
+    encoded_key = urllib.parse.quote(instrument_key, safe="")
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        if interval in ["1m", "5m", "15m"]:
+            up_int = "1minute" if interval in ["1m", "5m"] else "30minute"
+            url = f"https://api.upstox.com/v2/historical-candle/intraday/{encoded_key}/{up_int}"
+            r = requests.get(url, headers=headers, timeout=8)
+            candles = r.json().get("data", {}).get("candles", []) if r.status_code == 200 else []
+
+            if not candles:
+                from_d = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+                url_h = f"https://api.upstox.com/v2/historical-candle/{encoded_key}/30minute/{today_str}/{from_d}"
+                r_h = requests.get(url_h, headers=headers, timeout=8)
+                candles = r_h.json().get("data", {}).get("candles", []) if r_h.status_code == 200 else []
+        else:
+            days_map = {"3mo": 90, "6mo": 180, "1y": 365, "5y": 1825}
+            days_back = days_map.get(period, 180)
+            from_d = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+            up_int = "week" if interval == "1wk" else "day"
+            url = f"https://api.upstox.com/v2/historical-candle/{encoded_key}/{up_int}/{today_str}/{from_d}"
+            r = requests.get(url, headers=headers, timeout=8)
+            candles = r.json().get("data", {}).get("candles", []) if r.status_code == 200 else []
+
+        if candles:
+            df = pd.DataFrame(candles, columns=["Timestamp", "Open", "High", "Low", "Close", "Volume", "OI"])
+            df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+            df = df.sort_values("Timestamp").set_index("Timestamp")
+            if interval == "5m" and len(df) > 30:
+                df = df.resample("5min").agg({
+                    "Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum", "OI": "last"
+                }).dropna(subset=["Open", "Close"])
+            return df
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+# ==============================================================================
+# 3. SELF-HEALING FALLBACK & FUNDAMENTAL ENGINE
 # ==============================================================================
 
 @st.cache_data(ttl=45, show_spinner=False)
-def fetch_price_history(yf_ticker, period, interval):
+def fetch_yf_price_history(yf_ticker, period, interval):
     tk = yf.Ticker(yf_ticker)
     df = pd.DataFrame()
     used_fallback = False
@@ -87,7 +208,6 @@ def fetch_price_history(yf_ticker, period, interval):
     except Exception:
         df = pd.DataFrame()
 
-    # Automatic fallback if intraday is empty on weekends/holidays
     if df is None or df.empty or len(df) < 5:
         try:
             df = tk.history(period="6mo", interval="1d", auto_adjust=False)
@@ -141,15 +261,12 @@ def fetch_360_fundamentals(yf_ticker):
     except Exception:
         pass
 
-    # Self-healing calculation: Fill any missing .info fields using fast_info + accounting statements
     cmp_val = fast.get("lastPrice") or (hist_1y['Close'].iloc[-1] if not hist_1y.empty else None)
     shares = info.get("sharesOutstanding") or fast.get("shares")
     mcap = info.get("marketCap") or fast.get("marketCap") or ((cmp_val * shares) if (cmp_val and shares) else None)
-
     high_52 = info.get("fiftyTwoWeekHigh") or fast.get("fiftyTwoWeekHigh") or (hist_1y['High'].max() if not hist_1y.empty else None)
     low_52 = info.get("fiftyTwoWeekLow") or fast.get("fiftyTwoWeekLow") or (hist_1y['Low'].min() if not hist_1y.empty else None)
 
-    # Extract Equity, Debt, Revenue, Net Income from Statements if info is blocked
     stmt_equity, stmt_debt, stmt_net_inc, stmt_rev = None, None, None, None
     if not bal_sheet.empty:
         b_df = bal_sheet.T.sort_index()
@@ -169,31 +286,19 @@ def fetch_360_fundamentals(yf_ticker):
         if rv_col and not a_df[rv_col].dropna().empty:
             stmt_rev = float(a_df[rv_col].dropna().iloc[-1])
 
-    bv = info.get("bookValue")
-    if not bv and stmt_equity and shares and shares > 0:
-        bv = stmt_equity / shares
-
-    pb = info.get("priceToBook")
-    if not pb and cmp_val and bv and bv > 0:
-        pb = cmp_val / bv
-
-    pe = info.get("trailingPE")
-    if not pe and mcap and stmt_net_inc and stmt_net_inc > 0:
-        pe = mcap / stmt_net_inc
-
+    bv = info.get("bookValue") or ((stmt_equity / shares) if (stmt_equity and shares and shares > 0) else None)
+    pb = info.get("priceToBook") or ((cmp_val / bv) if (cmp_val and bv and bv > 0) else None)
+    pe = info.get("trailingPE") or ((mcap / stmt_net_inc) if (mcap and stmt_net_inc and stmt_net_inc > 0) else None)
     roe = info.get("returnOnEquity")
     if roe is None and stmt_net_inc and stmt_equity and stmt_equity > 0:
         roe = stmt_net_inc / stmt_equity
-
     net_margin = info.get("profitMargins")
     if net_margin is None and stmt_net_inc and stmt_rev and stmt_rev > 0:
         net_margin = stmt_net_inc / stmt_rev
-
     de = info.get("debtToEquity")
     if de is None and stmt_debt is not None and stmt_equity and stmt_equity > 0:
         de = (stmt_debt / stmt_equity) * 100.0
 
-    # Calculate Quarterly YoY or QoQ Profit Growth from q_inc if missing
     qtr_gr = info.get("earningsQuarterlyGrowth")
     if qtr_gr is None and not q_inc.empty:
         q_df = q_inc.T.sort_index()
@@ -206,41 +311,58 @@ def fetch_360_fundamentals(yf_ticker):
     clean_fund = {
         "marketCap_Cr": (mcap / 1e7) if mcap else None,
         "pe": pe,
-        "fwd_pe": info.get("forwardPE"),
         "pb": pb,
         "bv": bv,
         "roe_pct": (roe * 100) if roe is not None else None,
         "net_margin_pct": (net_margin * 100) if net_margin is not None else None,
-        "op_margin_pct": (info.get("operatingMargins") * 100) if info.get("operatingMargins") is not None else None,
         "de_pct": de,
         "high_52": high_52,
         "low_52": low_52,
         "qtr_gr_pct": (qtr_gr * 100) if qtr_gr is not None else None,
         "div_yield_pct": (info.get("dividendYield") * 100) if info.get("dividendYield") is not None else None,
         "promoter_pct": (info.get("heldPercentInsiders") * 100) if info.get("heldPercentInsiders") is not None else None,
-        "sector": info.get("sector", "Indian Listed Equity"),
-        "industry": info.get("industry", "NSE / BSE")
+        "sector": info.get("sector", "Indian Listed Equity")
     }
     return hist_1y, clean_fund, q_inc, bal_sheet
 
 # ==============================================================================
-# 3. CLEAN SIDEBAR CONTROLS
+# 4. SIDEBAR: SINGLE-BOX UPSTOX TOKEN INPUT & STOCK CONTROLS
 # ==============================================================================
+
+secret_token = ""
+try:
+    secret_token = st.secrets.get("UPSTOX_ACCESS_TOKEN", "")
+except Exception:
+    secret_token = ""
+
+if "upstox_token" not in st.session_state:
+    st.session_state["upstox_token"] = clean_token(secret_token)
+
+st.sidebar.header("⚡ Upstox Live API Feed")
+
+with st.sidebar.expander("🔑 Upstox Token Setup", expanded=not bool(st.session_state["upstox_token"])):
+    user_tok = st.text_input(
+        "Paste Upstox Access / Analytics Token:",
+        value=st.session_state["upstox_token"],
+        type="password",
+        help="Paste your Upstox Access Token or Analytics Token here and press Enter."
+    )
+    if clean_token(user_tok) != st.session_state["upstox_token"]:
+        st.session_state["upstox_token"] = clean_token(user_tok)
+
+active_token = st.session_state["upstox_token"]
+if active_token:
+    st.sidebar.success("🟢 Upstox Token Loaded (Live Order Book & Candles Enabled)")
+else:
+    st.sidebar.info("🟡 Paste your Upstox Token above to unlock Live Level-2 Order Book & VWAP")
+
+st.sidebar.markdown("---")
 st.sidebar.header("🇮🇳 Stock Search & Controls")
 
-exchange_choice = st.sidebar.radio(
-    "1. Exchange:",
-    ["NSE India (.NS)", "BSE India (.BO)"],
-    horizontal=True
-)
+exchange_choice = st.sidebar.radio("1. Exchange:", ["NSE India (.NS)", "BSE India (.BO)"], horizontal=True)
 suffix = ".NS" if "NSE" in exchange_choice else ".BO"
 
-selected_group = st.sidebar.selectbox(
-    "2. Filter by Index / Sector:",
-    options=list(INDEX_GROUPS.keys()),
-    index=0  # Defaults to NSE NIFTY 50 Stocks
-)
-
+selected_group = st.sidebar.selectbox("2. Filter by Index / Sector:", options=list(INDEX_GROUPS.keys()), index=0)
 available_symbols = INDEX_GROUPS[selected_group]
 formatted_options = [f"{sym} | {COMPANY_NAMES.get(sym, sym)}" for sym in available_symbols]
 
@@ -254,16 +376,17 @@ selected_stock_option = st.sidebar.selectbox(
 raw_symbol = selected_stock_option.split(" | ")[0].strip()
 company_name = selected_stock_option.split(" | ")[1].strip()
 yf_ticker = raw_symbol if raw_symbol.startswith("^") else f"{raw_symbol}{suffix}"
+upstox_inst_key = UPSTOX_INST_MAP.get(raw_symbol)
 
-# Automatically default to Daily Swing on weekends so full data shows immediately
 is_weekend = datetime.now().weekday() >= 5
-default_tf_idx = 3 if is_weekend else 0
+default_tf_idx = 3 if is_weekend else 1
 
 timeframe_label = st.sidebar.selectbox(
     "4. Chart Timeframe:",
     [
-        "Intraday Live (5m Candles - 5 Days)",
-        "Intraday Live (15m Candles - 5 Days)",
+        "Intraday Live (1m Candles)",
+        "Intraday Live (5m Candles)",
+        "Intraday Live (15m / 30m Candles)",
         "Swing (3 Months - Daily)",
         "Positional (6 Months - Daily)",
         "Long Term (1 Year - Daily)",
@@ -273,8 +396,9 @@ timeframe_label = st.sidebar.selectbox(
 )
 
 tf_map = {
-    "Intraday Live (5m Candles - 5 Days)": ("5d", "5m"),
-    "Intraday Live (15m Candles - 5 Days)": ("5d", "15m"),
+    "Intraday Live (1m Candles)": ("1d", "1m"),
+    "Intraday Live (5m Candles)": ("5d", "5m"),
+    "Intraday Live (15m / 30m Candles)": ("5d", "15m"),
     "Swing (3 Months - Daily)": ("3mo", "1d"),
     "Positional (6 Months - Daily)": ("6mo", "1d"),
     "Long Term (1 Year - Daily)": ("1y", "1d"),
@@ -288,33 +412,45 @@ overlays = st.sidebar.multiselect(
     default=["Moving Averages (20, 50, 200)", "Cumulative Volume Delta (CVD)", "RSI & Money Flow (MFI)"]
 )
 
-refresh_rate = st.sidebar.slider("6. Auto-Refresh (Seconds):", 15, 120, 30)
+refresh_rate = st.sidebar.slider("6. Auto-Refresh (Seconds):", 5, 120, 15)
 
 # ==============================================================================
-# 4. MAIN 360° DASHBOARD (PRICE + INFLOW/OUTFLOW + STRATEGY + FUNDAMENTALS)
+# 5. MAIN 360° DASHBOARD (UPSTOX LIVE ORDER BOOK + CANDLES + FUNDAMENTALS)
 # ==============================================================================
-st.title(f"🇮🇳 {company_name} ({yf_ticker})")
+st.title(f"🇮🇳 {company_name} ({raw_symbol})")
 
 @st.fragment(run_every=f"{refresh_rate}s")
-def render_360_dashboard():
-    df, used_fallback = fetch_price_history(yf_ticker, period, interval)
+def render_hybrid_terminal():
+    up_quote = None
+    up_err = None
+    df = pd.DataFrame()
+    used_fallback = False
+    data_source_badge = "Standard Market Feed"
+
+    # --- 1. FETCH FROM UPSTOX API v2 USING YOUR TOKEN ---
+    if active_token and upstox_inst_key:
+        up_quote, up_err = fetch_upstox_live_quote(upstox_inst_key, active_token)
+        df = fetch_upstox_candles(upstox_inst_key, period, interval, active_token)
+        if not df.empty or up_quote:
+            data_source_badge = f"⚡ Upstox Live API v2 ({upstox_inst_key})"
+        if up_err:
+            st.warning(f"⚠️ Upstox API Notice: {up_err} (Using backup market feed automatically)")
+
+    # --- 2. AUTOMATIC FALLBACK IF UPSTOX CANDLES EMPTY ---
+    if df.empty:
+        df, used_fallback = fetch_yf_price_history(yf_ticker, period, interval)
+
     hist_1y, fund, q_inc, bal_sheet = fetch_360_fundamentals(yf_ticker)
 
     if df is None or df.empty:
-        st.error(f"Market data temporarily unavailable for {yf_ticker}. Please select another stock or switch timeframe.")
+        st.error(f"Market data unavailable for {raw_symbol}. Check symbol or market connection.")
         return
 
-    if used_fallback:
-        st.info("ℹ️ Intraday candles are paused (Market Closed / Weekend). Showing Daily Historical chart automatically.")
-
     df = df.dropna(subset=['Open', 'High', 'Low', 'Close']).copy()
-
-    # If an Index (^NSEI) reports 0 volume on Yahoo, synthesize activity weight from candle range so flow works
-    is_zero_vol = (df['Volume'].sum() == 0)
-    if is_zero_vol:
+    if df['Volume'].sum() == 0:
         df['Volume'] = ((df['High'] - df['Low']).abs() * 1000).clip(lower=100).round(0)
 
-    # --- A. VOLUME INFLOW & OUTFLOW CALCULATIONS ---
+    # --- 3. VOLUME INFLOW & OUTFLOW CALCULATIONS ---
     hl_spread = (df['High'] - df['Low']).replace(0, np.nan)
     buy_ratio = ((df['Close'] - df['Low']) / hl_spread).fillna(0.5).clip(0.0, 1.0)
     sell_ratio = 1.0 - buy_ratio
@@ -328,7 +464,7 @@ def render_360_dashboard():
     df['Inflow_Cr'] = (df['Buy_Vol'] * df['Typical_Price']) / 1e7
     df['Outflow_Cr'] = (df['Sell_Vol'] * df['Typical_Price']) / 1e7
 
-    # --- B. TECHNICAL INDICATORS ---
+    # --- 4. TECHNICAL INDICATORS ---
     df['SMA_20'] = df['Close'].rolling(20, min_periods=1).mean()
     df['SMA_50'] = df['Close'].rolling(50, min_periods=1).mean()
     df['SMA_200'] = df['Close'].rolling(200, min_periods=1).mean()
@@ -347,11 +483,11 @@ def render_360_dashboard():
     neg_mf = raw_mf.where(df['Typical_Price'] < df['Typical_Price'].shift(1), 0).rolling(14, min_periods=1).sum()
     df['MFI'] = (100 - (100 / (1 + (pos_mf / neg_mf.replace(0, np.nan))))).fillna(50)
 
-    # --- C. TOP ROW: LIVE PRICE & VOLUME INFLOW / OUTFLOW ---
-    latest = float(df['Close'].iloc[-1])
+    # --- 5. LIVE SCOREBOARD ---
+    latest = float(up_quote.get("last_price", df['Close'].iloc[-1])) if up_quote else float(df['Close'].iloc[-1])
     prev = float(df['Close'].iloc[-2]) if len(df) > 1 else float(df['Open'].iloc[0])
-    chg = latest - prev
-    pct = (chg / prev) * 100 if prev != 0 else 0.0
+    net_chg = float(up_quote.get("net_change", latest - prev)) if up_quote else (latest - prev)
+    pct = (net_chg / (latest - net_chg) * 100) if (latest - net_chg) != 0 else 0.0
 
     tot_vol = float(df['Volume'].sum())
     in_vol = float(df['Buy_Vol'].sum())
@@ -367,7 +503,7 @@ def render_360_dashboard():
     mfi_val = float(df['MFI'].iloc[-1])
 
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Live Price (₹)", f"₹{latest:,.2f}", f"{chg:+.2f} ({pct:+.2f}%)")
+    c1.metric("Live Price (₹)", f"₹{latest:,.2f}", f"{net_chg:+.2f} ({pct:+.2f}%)")
     c2.metric("🟢 Buyer Volume Inflow", f"{int(in_vol):,}", f"₹{in_cr:,.2f} Cr ({in_pct:.1f}%)")
     c3.metric("🔴 Seller Volume Outflow", f"{int(out_vol):,}", f"-₹{out_cr:,.2f} Cr ({out_pct:.1f}%)", delta_color="inverse")
     c4.metric("⚡ Net Volume Flow", f"{int(net_vol):+,}", f"Net ₹{net_cr:+,.2f} Cr")
@@ -377,9 +513,9 @@ def render_360_dashboard():
         f"""
         <div style="background:#1e293b; padding:9px 14px; border-radius:8px; margin-bottom:12px; border:1px solid #334155;">
             <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:4px;">
-                <span style="color:#10b981;">🟢 BUYER INFLOW: {in_pct:.1f}% ({int(in_vol):,} | ₹{in_cr:,.2f} Cr)</span>
-                <span style="color:#94a3b8;">Last Updated: {datetime.now().strftime('%H:%M:%S')} | Latest Bar Net Delta: {int(df['Net_Delta'].iloc[-1]):+,}</span>
-                <span style="color:#ef4444;">🔴 SELLER OUTFLOW: {out_pct:.1f}% ({int(out_vol):,} | ₹{out_cr:,.2f} Cr)</span>
+                <span style="color:#10b981;">🟢 CANDLE BUY INFLOW: {in_pct:.1f}% ({int(in_vol):,} | ₹{in_cr:,.2f} Cr)</span>
+                <span style="color:#94a3b8;">Source: {data_source_badge} | Updated: {datetime.now().strftime('%H:%M:%S')}</span>
+                <span style="color:#ef4444;">🔴 CANDLE SELL OUTFLOW: {out_pct:.1f}% ({int(out_vol):,} | ₹{out_cr:,.2f} Cr)</span>
             </div>
             <div style="width:100%; height:10px; background:#ef4444; border-radius:5px; overflow:hidden;">
                 <div style="width:{in_pct:.1f}%; height:100%; background:#10b981;"></div>
@@ -389,8 +525,45 @@ def render_360_dashboard():
         unsafe_allow_html=True
     )
 
-    # --- D. GAP-FREE INTERACTIVE CHART (NO WEEKEND/OVERNIGHT BLANK GAPS) ---
-    if interval in ["5m", "15m"] and not used_fallback:
+    # --- 6. EXCLUSIVE UPSTOX LIVE LEVEL-2 ORDER BOOK & VWAP PANEL ---
+    if up_quote:
+        tbq = int(up_quote.get("total_buy_quantity", 0) or 0)
+        tsq = int(up_quote.get("total_sell_quantity", 0) or 0)
+        vwap = float(up_quote.get("average_price", 0) or 0)
+        oi = int(up_quote.get("oi", 0) or 0)
+        lower_c = up_quote.get("lower_circuit_limit")
+        upper_c = up_quote.get("upper_circuit_limit")
+        ob_tot = tbq + tsq
+        tbq_pct = (tbq / ob_tot * 100) if ob_tot > 0 else 50.0
+
+        with st.container(border=True):
+            st.markdown("#### ⚡ Upstox Live Exchange Order Book & Level-2 Market Depth")
+            u1, u2, u3, u4, u5 = st.columns(5)
+            u1.metric("VWAP (Avg Trade Price)", f"₹{vwap:,.2f}" if vwap else "N/A", "Above VWAP (Bullish)" if (vwap and latest >= vwap) else "Below VWAP")
+            u2.metric("Pending Buy Orders (TBQ)", f"{tbq:,}", f"{tbq_pct:.1f}% of Order Book")
+            u3.metric("Pending Sell Orders (TSQ)", f"{tsq:,}", f"{100-tbq_pct:.1f}% of Order Book", delta_color="inverse")
+            u4.metric("Circuit Limits (L / U)", f"₹{lower_c} - ₹{upper_c}" if (lower_c and upper_c) else "N/A")
+            u5.metric("Open Interest (OI)", f"{oi:,}" if oi else "Equity Spot")
+
+            depth = up_quote.get("depth", {})
+            buy_depth = depth.get("buy", [])
+            sell_depth = depth.get("sell", [])
+            if buy_depth and sell_depth:
+                with st.expander("📖 View Live Top 5 Bid vs. Ask Market Depth Table (Level 2)", expanded=True):
+                    d_col1, d_col2 = st.columns(2)
+                    with d_col1:
+                        st.markdown("**🟢 Top 5 Buyers (Bid Orders)**")
+                        st.dataframe(pd.DataFrame(buy_depth)[["orders", "quantity", "price"]].rename(
+                            columns={"orders": "Orders", "quantity": "Bid Qty", "price": "Bid Price (₹)"}
+                        ), use_container_width=True, hide_index=True)
+                    with d_col2:
+                        st.markdown("**🔴 Top 5 Sellers (Ask Orders)**")
+                        st.dataframe(pd.DataFrame(sell_depth)[["price", "quantity", "orders"]].rename(
+                            columns={"price": "Ask Price (₹)", "quantity": "Ask Qty", "orders": "Orders"}
+                        ), use_container_width=True, hide_index=True)
+
+    # --- 7. GAP-FREE INTERACTIVE MULTI-PANE CHART ---
+    if interval in ["1m", "5m", "15m"] and not used_fallback:
         x_labels = [ts.strftime('%d %b %H:%M') for ts in df.index]
     else:
         x_labels = [ts.strftime('%d %b %Y') for ts in df.index]
@@ -403,7 +576,7 @@ def render_360_dashboard():
     titles = ["Price Action & Moving Averages (₹)", "Volume Inflow (Green) vs. Outflow (Red)"]
     heights = [0.52, 0.18]
     if show_cvd:
-        titles.append("Cumulative Volume Delta (CVD - Institutional Accumulation/Distribution)")
+        titles.append("Cumulative Volume Delta (CVD - Net Institutional Flow)")
         heights.append(0.15)
     if show_osc:
         titles.append("Momentum: RSI (14) & Money Flow Index (MFI 14)")
@@ -444,12 +617,10 @@ def render_360_dashboard():
     fig.update_layout(height=700, template="plotly_dark", barmode="relative", xaxis_rangeslider_visible=False, margin=dict(l=15, r=15, t=25, b=10), uirevision=f"{yf_ticker}_{timeframe_label}")
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- E. STRATEGY SCORECARD & FUNDAMENTALS (FOR ALL STOCKS) ---
-    if raw_symbol.startswith("^"):
-        st.info("📌 **Note:** You are currently viewing a Benchmark Index. Select any individual company from the sidebar (such as **RELIANCE**, **HDFCBANK**, **TCS**, or **SBIN**) to view Company Fundamentals, Balance Sheet Charts, and Strategy Scorecards.")
-    else:
+    # --- 8. STRATEGY SCORECARD & FUNDAMENTALS ---
+    if not raw_symbol.startswith("^"):
         base_df = hist_1y if not hist_1y.empty else df
-        d_close = float(base_df['Close'].iloc[-1])
+        d_close = latest
         dma_50 = float(base_df['Close'].rolling(50, min_periods=1).mean().iloc[-1])
         dma_200 = float(base_df['Close'].rolling(200, min_periods=1).mean().iloc[-1])
         high_52 = fund.get("high_52") or float(base_df['High'].max())
@@ -458,11 +629,9 @@ def render_360_dashboard():
 
         mcap_cr = fund.get("marketCap_Cr")
         pe = fund.get("pe")
-        fwd_pe = fund.get("fwd_pe")
         pb = fund.get("pb")
         bv = fund.get("bv")
         roe = fund.get("roe_pct")
-        op_m = fund.get("op_margin_pct")
         net_m = fund.get("net_margin_pct")
         de = fund.get("de_pct")
         qtr_gr = fund.get("qtr_gr_pct")
@@ -478,18 +647,15 @@ def render_360_dashboard():
         with sc1:
             with st.container(border=True):
                 st.markdown(f"**💎 Low P/B Value Strategy:** {'🟢 **QUALIFIES**' if pass_value else '⚪ **Watchlist**'}")
-                st.caption(f"• P/B Ratio: **{f'{pb:.2f}x' if pb else 'N/A'}** (Target ≤ 3.5x) | Book Value: **{f'₹{bv:,.1f}' if bv else 'N/A'}**")
-                st.caption(f"• Trailing P/E: **{f'{pe:.1f}x' if pe else 'N/A'}** (Target ≤ 28x)")
+                st.caption(f"• P/B Ratio: **{f'{pb:.2f}x' if pb else 'N/A'}** | Book Value: **{f'₹{bv:,.1f}' if bv else 'N/A'}** | P/E: **{f'{pe:.1f}x' if pe else 'N/A'}**")
         with sc2:
             with st.container(border=True):
                 st.markdown(f"**🚀 52-Week High Breakout:** {'🟢 **QUALIFIES**' if pass_breakout else '⚪ **Watchlist**'}")
-                st.caption(f"• Off 52W High (₹{high_52:,.1f}): **{dist_52h:.1f}%** (Target ≤ 15%)")
-                st.caption(f"• Above 50 DMA (₹{dma_50:,.1f}): **{'Yes' if d_close >= dma_50 else 'No'}** | Buy Inflow: **{in_pct:.1f}%**")
+                st.caption(f"• Off 52W High (₹{high_52:,.1f}): **{dist_52h:.1f}%** | Above 50 DMA (₹{dma_50:,.1f}): **{'Yes' if d_close >= dma_50 else 'No'}**")
         with sc3:
             with st.container(border=True):
                 st.markdown(f"**🏆 CANSLIM Growth & Momentum:** {'🟢 **QUALIFIES**' if pass_canslim else '⚪ **Watchlist**'}")
-                st.caption(f"• Above 50 & 200 DMA (₹{dma_200:,.1f}): **{'Yes' if (d_close >= dma_50 and d_close >= dma_200) else 'No'}**")
-                st.caption(f"• ROE: **{f'{roe:.1f}%' if roe is not None else 'N/A'}** | Qtr Profit Gr: **{f'{qtr_gr:+.1f}%' if qtr_gr is not None else 'N/A'}**")
+                st.caption(f"• Above 50 & 200 DMA: **{'Yes' if (d_close >= dma_50 and d_close >= dma_200) else 'No'}** | ROE: **{f'{roe:.1f}%' if roe is not None else 'N/A'}**")
 
         st.markdown(f"### 🏛️ Company Fundamentals & Financial Statements — `{fund.get('sector')}`")
         f1, f2, f3, f4, f5, f6 = st.columns(6)
@@ -537,50 +703,4 @@ def render_360_dashboard():
                     fig_b.update_layout(title="🏦 Annual Balance Sheet: Assets, Equity & Debt (₹ Crores)", height=320, template="plotly_dark", barmode="group", margin=dict(l=10, r=10, t=35, b=10))
                     st.plotly_chart(fig_b, use_container_width=True)
 
-render_360_dashboard()
-
-# ==============================================================================
-# 5. ONE-CLICK PEER COMPARISON FOR SELECTED INDEX
-# ==============================================================================
-with st.expander(f"🔍 Scan & Compare All Peer Stocks in [{selected_group}]", expanded=False):
-    peer_list = available_symbols[:25]
-    if st.button(f"🚀 Scan {len(peer_list)} Stocks in {selected_group.split('(')[0].strip()}", type="primary"):
-        rows = []
-        prog = st.progress(0)
-        for i, s in enumerate(peer_list):
-            try:
-                t_s = s if s.startswith("^") else f"{s}{suffix}"
-                h, _ = fetch_price_history(t_s, "3mo", "1d")
-                if not h.empty and len(h) >= 15:
-                    c = float(h['Close'].iloc[-1])
-                    prev_c = float(h['Close'].iloc[-2])
-                    chg_p = (c - prev_c) / prev_c * 100
-                    sma50 = float(h['Close'].rolling(50, min_periods=1).mean().iloc[-1])
-                    h52 = float(h['High'].max())
-                    off_52 = (h52 - c) / h52 * 100 if h52 else 0
-
-                    rec = h.tail(5)
-                    hl = (rec['High'] - rec['Low']).replace(0, np.nan)
-                    br = ((rec['Close'] - rec['Low']) / hl).fillna(0.5).clip(0, 1)
-                    in_v = float((rec['Volume'] * br).sum())
-                    tot_v = float(rec['Volume'].sum())
-                    in_p = (in_v / tot_v * 100) if tot_v > 0 else 50.0
-                    net_cr_5d = float((((rec['Volume'] * br) - (rec['Volume'] * (1 - br))) * ((rec['High'] + rec['Low'] + rec['Close']) / 3)).sum() / 1e7)
-
-                    rows.append({
-                        "Symbol": s,
-                        "Company": COMPANY_NAMES.get(s, s)[:26],
-                        "Price (₹)": round(c, 2),
-                        "1D Chg (%)": round(chg_p, 2),
-                        "🟢 5D Buy Inflow (%)": round(in_p, 1),
-                        "5D Net Flow (₹ Cr)": round(net_cr_5d, 2),
-                        "50 DMA (₹)": round(sma50, 1),
-                        "Off 52W High (%)": round(off_52, 1),
-                        "Trend & Flow Signal": "🟢 Breakout + Inflow" if (c >= sma50 and in_p >= 52) else ("🔴 Below 50 DMA" if c < sma50 else "🟡 Neutral")
-                    })
-            except Exception:
-                pass
-            prog.progress((i + 1) / len(peer_list))
-        prog.empty()
-        if rows:
-            st.dataframe(pd.DataFrame(rows).sort_values(by="5D Net Flow (₹ Cr)", ascending=False), use_container_width=True, hide_index=True)
+render_hybrid_terminal()
