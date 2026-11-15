@@ -11,7 +11,7 @@ import io
 st.set_page_config(page_title="NSE & BSE India Pro Research Terminal", layout="wide")
 
 # ==============================================================================
-# 1. COMPLETE NSE & BSE INDEX CONSTITUENT BASKETS + LIVE NSE ARCHIVE FETCHER
+# 1. VERIFIED NSE & BSE INDEX CONSTITUENT BASKETS (100% CLOUD COMPATIBLE)
 # ==============================================================================
 
 INDEX_BENCHMARKS = [
@@ -35,46 +35,79 @@ INDEX_BENCHMARKS = [
     "BSE-SMLCAP.BO | BSE SMALLCAP INDEX"
 ]
 
+NIFTY_50_SYMS = (
+    "ADANIENT, ADANIPORTS, APOLLOHOSP, ASIANPAINT, AXISBANK, BAJAJ-AUTO, BAJFINANCE, "
+    "BAJAJFINSV, BEL, BPCL, BHARTIARTL, BRITANNIA, CIPLA, COALINDIA, DRREDDY, EICHERMOT, "
+    "GRASIM, HCLTECH, HDFCBANK, HDFCLIFE, HEROMOTOCO, HINDALCO, HINDUNILVR, ICICIBANK, "
+    "INDUSINDBK, INFY, ITC, JSWSTEEL, KOTAKBANK, LT, M&M, MARUTI, NESTLEIND, NTPC, ONGC, "
+    "POWERGRID, RELIANCE, SBILIFE, SHRIRAMFIN, SBIN, SUNPHARMA, TCS, TATACONSUM, TATAMOTORS, "
+    "TATASTEEL, TECHM, TITAN, TRENT, ULTRACEMCO, WIPRO"
+)
+
+NIFTY_NEXT_50_SYMS = (
+    "ABB, ADANIENSOL, ADANIGREEN, ADANIPOWER, ATGL, AMBUJACEM, DMART, BAJAJHLDNG, BANKBARODA, "
+    "BHEL, BOSCHLTD, CANBK, CHOLAFIN, COLPAL, DLF, DABUR, DIVISLAB, GAIL, GODREJCP, HAL, "
+    "HAVELLS, HINDZINC, ICICIGI, ICICIPRULI, IOC, IRCTC, IRFC, JINDALSTEL, JIOFIN, JSWENERGY, "
+    "LICI, LODHA, LTIM, MARICO, MOTHERSON, NAUKRI, NHPC, PIDILITIND, PFC, PNB, RECLTD, "
+    "SIEMENS, SRF, SHREECEM, TATAPOWER, TORNTPHARM, TVSMOTOR, UNITDSPR, VBL, VEDL, ZOMATO, ZYDUSLIFE"
+)
+
+NIFTY_MIDCAP_100_SYMS = (
+    "DIXON, POLYCAB, PERSISTENT, CUMMINSIND, CGPOWER, SUPREMEIND, ASTRAL, COFORGE, VOLTAS, PAGEIND, "
+    "PIIND, AUBANK, FEDERALBNK, IDFCFIRSTB, INDHOTEL, ASHOKLEY, CONCOR, BHARATFORG, TIINDIA, ALKEM, "
+    "LUPIN, AUROPHARMA, MAXHEALTH, OBEROIRLTY, GODREJPROP, PRESTIGE, MRF, BALKRISIND, PETRONET, HPCL, "
+    "NMDC, SAIL, GMRINFRA, IDEA, YESBANK, MPHASIS, LTTS, TATACOMM, ABFRL, JUBLFOOD, "
+    "LICHSGFIN, MFSL, SUNDARMFIN, COROMANDEL, DEEPAKNTR, ATUL, GUJGASLTD, FORTIS, INDIANB, UNIONBANK, "
+    "BANKINDIA, MAHABANK, MUTHOOTFIN, SBICARD, BSE, MCX, CDSL, ANGELONE, SUZLON,RVNL, "
+    "MAZDOCK, BDL, COCHINSHIP, SOLARINDS, PHOENIXLTD, BRIGADE, APLAPOLLO, JSL, OIL, TORNTPOWER, "
+    "SJVN, NLCINDIA, HUDCO, NBCC, IRB, NCC, KEI, APARINDS, KPITTECH, TATAELXSI, "
+    "SONACOMS, EXIDEIND, APOLLOTYRE, MANKIND, BIOCON, LAURUSLABS, GLENMARK, IPCALAB, SYNGENE, UBL, "
+    "RADICO, PATANJALI, KAYNES, DELHIVERY, PAYTM, POLICYBZR, NYKAA, SONATSOFTW, CYIENT, BIRLASOFT"
+)
+
+NIFTY_SMALLCAP_100_SYMS = (
+    "CAMS, KFINTECH, SYRMA, DATAPATTNS, TEJASNET, HFCL, ITI, CENTURYTEX, RAYMOND, WELSPUNLIV, "
+    "TRIDENT, PRAJIND, IONEXCHANG, FINCABLES, ELECON, ACE, TITAGARH, JWL, RKFORGE, JBMA, "
+    "OLECTRA, BLUEDART, GESHIP, SCI, LEMONTREE, CHALET, EIHOTEL, NAVINFLUOR, AARTIIND, CLEAN, "
+    "GNFC, CHAMBLFERT, RENUKA, BALRAMCHIN, ZENSARTECH, LATENTVIEW, MAPMYINDIA, NETWEB, INOXWIND, GRSE, "
+    "IRCON, RAILTEL, RITES, BEML, CESC, IGL, MGL, HINDCOPPER, MOIL, NATIONALUM, "
+    "RATNAMANI, WELCORP, SOBHA, DALBHARAT, ACC, JYOTHYLAB, BIKAJI, EMAMILTD, KARURVYSYA, CITYUNIONBK, "
+    "RBLBANK, IDBI, IOB, CENTRALBK, UCOBANK, PNBHOUSING, CANFINHOME, MANAPPURAM, IIFL,POONAWALLA, "
+    "MOTILALOFS, EDELWEISS, UTIAMC, NAM-INDIA, INTELLECT, TANLA, ROUTE, AFFLE, HAPPSTMNDS, MASTEK, "
+    "FIRSTSOURCE, ECLERX,GRANULES, NATCOPHARM, AJANTPHARM, JBCHEPHARM, ERIS, ASTERDM, KIMS, METROPOLIS, "
+    "LALPATHLAB, VIJAYA, REDINGTON, AMBER, BLUESTARCO, WHIRLPOOL, CROMPTON, VGUARD,PVRINOX, SAREGAMA"
+)
+
 NSE_BSE_INDEX_BASKETS = {
-    "📊 All Major NSE & BSE Benchmark Indices (Direct Index Scan)": (
-        "^NSEI, ^BSESN, ^NSEBANK, ^CNXIT, ^CNXPHARMA, ^CNXAUTO, ^CNXFMCG, "
-        "^CNXMETAL, ^CNXPSUBANK, ^CNXREALTY, ^CNXENERGY, ^CNXINFRA, ^NSEMDCP50"
-    ),
-    "🇮🇳 BSE SENSEX 30 (All 30 Constituent Stocks)": (
-        "RELIANCE, TCS, HDFCBANK, ICICIBANK, INFY, BHARTIARTL, SBIN, ITC, LT, HCLTECH, "
-        "AXISBANK, BAJFINANCE, MARUTI, SUNPHARMA, TATAMOTORS, KOTAKBANK, ULTRACEMCO, NTPC, "
-        "M&M, TITAN, POWERGRID, ASIANPAINT,BAJAJFINSV, NESTLEIND, INDUSINDBK, ADANIPORTS, "
-        "TATASTEEL, JSWSTEEL, TECHM, HINDUNILVR"
-    ),
-    "🇮🇳 NSE NIFTY 50 (All 50 Constituent Stocks)": (
-        "ADANIENT, ADANIPORTS, APOLLOHOSP, ASIANPAINT, AXISBANK, BAJAJ-AUTO, BAJFINANCE, "
-        "BAJAJFINSV, BEL, BPCL, BHARTIARTL, BRITANNIA, CIPLA, COALINDIA, DRREDDY, EICHERMOT, "
-        "GRASIM, HCLTECH, HDFCBANK, HDFCLIFE, HEROMOTOCO, HINDALCO, HINDUNILVR, ICICIBANK, "
-        "INDUSINDBK, INFY, ITC, JSWSTEEL, KOTAKBANK, LT, M&M, MARUTI, NESTLEIND, NTPC, ONGC, "
-        "POWERGRID, RELIANCE, SBILIFE, SHRIRAMFIN, SBIN, SUNPHARMA, TCS, TATACONSUM, TATAMOTORS, "
-        "TATASTEEL, TECHM, TITAN, TRENT, ULTRACEMCO, WIPRO"
-    ),
-    "🇮🇳 NSE NIFTY NEXT 50 (All 50 Constituent Stocks)": (
-        "ABB, ADANIENSOL, ADANIGREEN, ADANIPOWER, ATGL, AMBUJACEM, DMART, BAJAJHLDNG, BANKBARODA, "
-        "BHEL, BOSCHLTD, CANBK, CHOLAFIN, COLPAL, DLF, DABUR, DIVISLAB, GAIL, GODREJCP, HAL, "
-        "HAVELLS, HINDZINC, ICICIGI, ICICIPRULI, IOC, IRCTC, IRFC, JINDALSTEL, JIOFIN, JSWENERGY, "
-        "LICI, LODHA, LTIM, MARICO, MOTHERSON, NAUKRI, NHPC, PIDILITIND, PFC, PNB, RECLTD, "
-        "SIEMENS, SRF, SHREECEM, TATAPOWER, TORNTPHARM, TVS, UNITDSPR, VBL, VEDL, ZOMATO, ZYDUSLIFE"
-    ),
-    "🏦 NIFTY BANK (All Private & Large Banking Stocks)": (
+    "🏦 NIFTY BANK (All 12 Private & PSU Banking Leaders)": (
         "HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK, BANKBARODA, PNB, "
         "FEDERALBNK, IDFCFIRSTB, AUBANK, BANDHANBNK"
     ),
-    "🏛️ NIFTY PSU BANK (All Public Sector Banks)": (
+    "🏛️ NIFTY PSU BANK (All 12 Public Sector Banks)": (
         "SBIN, BANKBARODA, PNB, CANBK, UNIONBANK, INDIANB, BANKINDIA, MAHABANK, "
         "IOB, CENTRALBK, UCOBANK, PSB"
     ),
-    "💰 NIFTY FINANCIAL SERVICES (NBFCs, Insurance & Exchanges)": (
+    "🏦 NIFTY PRIVATE BANK (All 10 Private Sector Banks)": (
+        "HDFCBANK, ICICIBANK, KOTAKBANK, AXISBANK, INDUSINDBK, FEDERALBNK, IDFCFIRSTB, "
+        "AUBANK, BANDHANBNK, RBLBANK"
+    ),
+    "💰 NIFTY FINANCIAL SERVICES (NBFCs, Insurance & Capital Markets)": (
         "HDFCBANK, ICICIBANK, SBIN, BAJFINANCE, BAJAJFINSV, KOTAKBANK, AXISBANK, JIOFIN, "
         "CHOLAFIN, SHRIRAMFIN, PFC, RECLTD, SBILIFE, HDFCLIFE, ICICIPRULI, ICICIGI, "
-        "MUTHOOTFIN,SBICARD, BSE, MCX, CDSL, ANGELONE"
+        "MUTHOOTFIN, SBICARD, BSE, MCX, CDSL, ANGELONE"
     ),
-    "💻 NIFTY IT (Information Technology & Software Leaders)": (
+    "🇮🇳 NSE NIFTY 50 (All 50 Constituent Stocks)": NIFTY_50_SYMS,
+    "🇮🇳 BSE SENSEX 30 (All 30 Constituent Stocks)": (
+        "RELIANCE, TCS, HDFCBANK, ICICIBANK, INFY, BHARTIARTL, SBIN, ITC, LT, HCLTECH, "
+        "AXISBANK, BAJFINANCE, MARUTI, SUNPHARMA, TATAMOTORS, KOTAKBANK, ULTRACEMCO, NTPC, "
+        "M&M, TITAN, POWERGRID, ASIANPAINT, BAJAJFINSV, NESTLEIND, INDUSINDBK, ADANIPORTS, "
+        "TATASTEEL, JSWSTEEL, TECHM, HINDUNILVR"
+    ),
+    "🇮🇳 NSE NIFTY NEXT 50 (All 50 Constituent Stocks)": NIFTY_NEXT_50_SYMS,
+    "🇮🇳 NSE NIFTY 100 (All 100 Largecap Stocks = Nifty 50 + Next 50)": f"{NIFTY_50_SYMS}, {NIFTY_NEXT_50_SYMS}",
+    "🚀 NIFTY MIDCAP 100 (100 High-Growth Midcap Stocks)": NIFTY_MIDCAP_100_SYMS,
+    "🔥 NIFTY SMALLCAP 100 (100 High-Beta Smallcap Stocks)": NIFTY_SMALLCAP_100_SYMS,
+    "💻 NIFTY IT (Information Technology & Software)": (
         "TCS, INFY, HCLTECH, WIPRO, TECHM, LTIM, PERSISTENT, OFSS, COFORGE, MPHASIS, "
         "LTTS, TATAELXSI, KPITTECH, CYIENT, ZENSARTECH, SONATSOFTW, BIRLASOFT"
     ),
@@ -84,7 +117,7 @@ NSE_BSE_INDEX_BASKETS = {
     ),
     "💊 NIFTY PHARMA & HEALTHCARE (Pharmaceuticals & Hospitals)": (
         "SUNPHARMA, DRREDDY, CIPLA, DIVISLAB, APOLLOHOSP, LUPIN, AUROPHARMA, TORNTPHARM, "
-        "ZYDUSLIFE, ALKEM, MANKIND, MAXHEALTH,FORTIS, BIOCON, LAURUSLABS, GLENMARK, IPCA, SYNGENE"
+        "ZYDUSLIFE, ALKEM, MANKIND, MAXHEALTH, FORTIS, BIOCON, LAURUSLABS, GLENMARK, IPCALAB, SYNGENE"
     ),
     "🛒 NIFTY FMCG & CONSUMER (Fast-Moving Consumer Goods)": (
         "ITC, HINDUNILVR, NESTLEIND, VBL, BRITANNIA, GODREJCP, TATACONSUM, DABUR, MARICO, "
@@ -98,60 +131,27 @@ NSE_BSE_INDEX_BASKETS = {
         "RELIANCE, NTPC, ONGC, POWERGRID, COALINDIA, ADANIGREEN, ADANIPOWER, TATAPOWER, "
         "IOC, BPCL, GAIL, JSWENERGY, NHPC, SJVN, TORNTPOWER, CESC, PETRONET, OIL, HPCL, IGL, MGL"
     ),
-    "🏢 NIFTY REALTY & INFRASTRUCTURE (Real Estate & Construction)": (
-        "DLF, LODHA, GODREJPROP, PRESTIGE, OBERRIOIRL, PHOENIXLTD, BRIGADE, SOBHA, "
-        "LT, ULTRACEMCO, AMBUJACEM, GRASIM, SHREECEM, ACC, DALBHARAT,IRB, GMRINFRA, NCC"
+    "🏢 NIFTY REALTY & INFRASTRUCTURE (Real Estate & Cement/Infra)": (
+        "DLF, LODHA, GODREJPROP, PRESTIGE, OBEROIRLTY, PHOENIXLTD, BRIGADE, SOBHA, "
+        "LT, ULTRACEMCO, AMBUJACEM, GRASIM, SHREECEM, ACC, DALBHARAT, IRB, GMRINFRA, NCC"
     ),
     "🛡️ NIFTY PSE, DEFENSE & RAILWAYS (PSU Capex & Manufacturing)": (
         "HAL, BEL, MAZDOCK, BDL, COCHINSHIP, GRSE, SOLARINDS, IRFC, RVNL, IRCON, "
         "TITAGARH, RAILTEL, RITES, BEML, BHEL, NTPC, ONGC, COALINDIA, POWERGRID, PFC, RECLTD"
     ),
-    "🚀 NIFTY MIDCAP 50 (Top 50 High-Growth Midcap Leaders)": (
-        "TRENT, DIXON, POLYCAB, PERSISTENT, CUMMINSIND, CG, SUPREMEIND, ASTRAL, COFORGE, "
-        "VOLTAS, PAGEIND,PIIND, AUBANK, FEDERALBNK, IDFCFIRSTB, INDHOTEL, ASHOKLEY, CONCOR, "
-        "BHARATFORG,TIINDIA, ALKEM, LUPIN, AUROPHARMA,MAXHEALTH, OBERRIOIRL, GODREJPROP, "
-        "PRESTIGE, MRF, BALKRISIND, PETRONET, HPCL, NMDC, SAIL, BHEL,GMRINFRA, IDEA, YESBANK, "
-        "MPHASIS, LTTS, TATACOMM, ABFRL, JUBLFOOD,LICHSGFIN, MFSL, SUNDARMFIN, COROMANDEL, "
-        "DEEPAKNTR, ATUL,GUJGASLTD,ZYDUSLIFE"
+    "📊 All Major NSE & BSE Benchmark Indices (Direct Index Scan)": (
+        "^NSEI, ^BSESN, ^NSEBANK, ^CNXIT, ^CNXPHARMA, ^CNXAUTO, ^CNXFMCG, "
+        "^CNXMETAL, ^CNXPSUBANK, ^CNXREALTY, ^CNXENERGY, ^CNXINFRA, ^NSEMDCP50"
     ),
-    "🔥 NIFTY SMALLCAP 50 (Top 50 High-Beta Smallcap Movers)": (
-        "SUZLON, BSE, MCX, CDSL, ANGELONE, CAMS, KFINTECH, KAYNES, SYRMA, DATA, "
-        "TEJASNET, HFCL, ITI, CENTURYTEX, RAYMOND, WELSPUNLIV, TRIDENT, PRAJIND, IONEXCHANG, "
-        "KEI, FINCABLES, APARINDS, ELECON, ACE, TITAGARH, JWL, RKFORGE,JBMA, OLECTRA, "
-        "BLUEDART, GREATEST,SCI,LEMONTREE, CHALET, EIHOTEL,NAVINFLUOR, AARTIIND, CLEAN, "
-        "GNFC, CHAMBLFERT, RENUKA, BALRAMCHIN, BIRLASOFT, ZENSARTECH, SONATSOFTW, CYIENT, "
-        "LATENTVIEW, MAPMYINDIA, NETWEB, INOXWIND"
-    ),
-    "🌐 LIVE NSE ARCHIVE: NIFTY 100 (Pulls All 100 Stocks Live)": "ARCHIVE:ind_nifty100list.csv",
-    "🌐 LIVE NSE ARCHIVE: NIFTY 200 (Pulls All 200 Stocks Live)": "ARCHIVE:ind_nifty200list.csv",
-    "🌐 LIVE NSE ARCHIVE: NIFTY 500 (Pulls All 500 Stocks Live)": "ARCHIVE:ind_nifty500list.csv",
-    "🌐 LIVE NSE ARCHIVE: NIFTY MIDCAP 150 (Pulls 150 Stocks Live)": "ARCHIVE:ind_niftymidcap150list.csv",
-    "🌐 LIVE NSE ARCHIVE: NIFTY SMALLCAP 250 (Pulls 250 Stocks Live)": "ARCHIVE:ind_niftysmallcap250list.csv",
     "✍️ Custom NSE / BSE Symbol List": "RELIANCE, TCS, HDFCBANK, SBIN, HAL, BEL, TRENT, TATAMOTORS, ONGC, ITC"
 }
-
-@st.cache_data(ttl=86400)
-def fetch_nse_archive_index(csv_filename):
-    try:
-        url = f"https://nsearchives.nseindia.com/content/indices/{csv_filename}"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            text = resp.read().decode('utf-8')
-        df_idx = pd.read_csv(io.StringIO(text))
-        df_idx.columns = df_idx.columns.str.strip()
-        if 'Symbol' in df_idx.columns:
-            syms = [str(s).strip() for s in df_idx['Symbol'].dropna().tolist() if not str(s).startswith("NIFTY")]
-            return ", ".join(syms)
-    except Exception:
-        pass
-    return NSE_BSE_INDEX_BASKETS["🇮🇳 NSE NIFTY 50 (All 50 Constituent Stocks)"]
 
 @st.cache_data(ttl=86400)
 def get_all_nse_stocks():
     try:
         url = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=8) as response:
             csv_text = response.read().decode('utf-8')
         nse_df = pd.read_csv(io.StringIO(csv_text))
         nse_df.columns = nse_df.columns.str.strip()
@@ -161,18 +161,17 @@ def get_all_nse_stocks():
         ]
         return INDEX_BENCHMARKS + sorted(stock_list)
     except Exception:
-        fallback_syms = NSE_BSE_INDEX_BASKETS["🇮🇳 NSE NIFTY 50 (All 50 Constituent Stocks)"].split(", ")
-        fallback = [f"{s.strip()} | {s.strip()} Limited" for s in fallback_syms]
+        # Cloud-safe fallback combining all unique stocks across our index baskets
+        all_syms = set()
+        for k, v in NSE_BSE_INDEX_BASKETS.items():
+            if not k.startswith("📊"):
+                for s in v.split(","):
+                    if s.strip():
+                        all_syms.add(s.strip())
+        fallback = [f"{s} | {s} India Ltd" for s in sorted(list(all_syms))]
         return INDEX_BENCHMARKS + fallback
 
 nse_catalog = get_all_nse_stocks()
-
-def resolve_basket_symbols(selected_basket_key):
-    val = NSE_BSE_INDEX_BASKETS.get(selected_basket_key, "")
-    if val.startswith("ARCHIVE:"):
-        csv_file = val.replace("ARCHIVE:", "")
-        return fetch_nse_archive_index(csv_file)
-    return val
 
 def format_yf_ticker(sym, exchange_suffix=".NS"):
     s = sym.strip().upper().replace(".NS", "").replace(".BO", "")
@@ -548,20 +547,28 @@ with tab3:
         vol_basket_choice = st.selectbox(
             "Choose NSE / BSE Stock Basket to Scan (Volume Flow):",
             options=list(NSE_BSE_INDEX_BASKETS.keys()),
-            index=1,
-            key="tab3_basket"
+            index=0,
+            key="tab3_basket_selector"
         )
     with t3_col2:
         t3_exchange = st.radio("Scan Exchange:", ["NSE (.NS)", "BSE (.BO)"], horizontal=True, key="t3_exch")
         t3_suffix = ".NS" if "NSE" in t3_exchange else ".BO"
 
-    resolved_t3_syms = resolve_basket_symbols(vol_basket_choice)
-    basket_input = st.text_area("Symbols in Selected Index Basket (Editable):", value=resolved_t3_syms, height=80, key="t3_syms")
+    resolved_t3_syms = NSE_BSE_INDEX_BASKETS[vol_basket_choice]
+    sym_count_t3 = len([s for s in resolved_t3_syms.split(",") if s.strip()])
 
-    if st.button("🚀 Scan Index Basket Volume Inflow & Outflow", type="primary"):
+    # Dynamic key tied to vol_basket_choice ensures the text area updates immediately when dropdown changes!
+    basket_input = st.text_area(
+        f"✅ {sym_count_t3} Stocks Loaded for [{vol_basket_choice}] (Editable):",
+        value=resolved_t3_syms,
+        height=85,
+        key=f"t3_syms_{vol_basket_choice}"
+    )
+
+    if st.button(f"🚀 Scan {vol_basket_choice.split('(')[0].strip()} Volume Flow", type="primary", key="btn_t3_scan"):
         symbols = [s.strip() for s in basket_input.split(",") if s.strip()]
         results = []
-        progress = st.progress(0, text="Scanning live volume flow across index constituents...")
+        progress = st.progress(0, text=f"Scanning {len(symbols)} stocks in {vol_basket_choice}...")
 
         for idx, sym in enumerate(symbols):
             try:
@@ -604,12 +611,13 @@ with tab3:
         progress.empty()
         if results:
             scan_df = pd.DataFrame(results).sort_values(by="Net Flow (₹ Cr)", ascending=False)
+            st.success(f"Showing Volume Inflow/Outflow for **{len(scan_df)}** stocks in **{vol_basket_choice}**")
             st.dataframe(scan_df, use_container_width=True, hide_index=True)
 
 # === TAB 4: STRATEGY SCREENER WITH ALL NSE & BSE INDEX BASKETS ===
 with tab4:
     st.subheader("🎯 Institutional Strategy Screener — All NSE & BSE Index Baskets")
-    st.caption("Select any NSE or BSE Index Basket below to scan all constituent stocks for Deep Value (Low P/B), 52-Week High Breakouts, or CANSLIM criteria.")
+    st.caption("Select any NSE or BSE Index Basket below — the stock list updates automatically to match your selected index.")
 
     col_a, col_b = st.columns([1, 2])
     with col_a:
@@ -629,15 +637,19 @@ with tab4:
         preset_universe = st.selectbox(
             "3. Choose NSE / BSE Stock Basket to Scan:",
             options=list(NSE_BSE_INDEX_BASKETS.keys()),
-            index=2,  # Defaults to NSE NIFTY 50 (All 50 Constituent Stocks)
-            key="tab4_basket"
+            index=0,
+            key="tab4_basket_selector"
         )
 
-        resolved_t4_syms = resolve_basket_symbols(preset_universe)
+        resolved_t4_syms = NSE_BSE_INDEX_BASKETS[preset_universe]
+        sym_count_t4 = len([s for s in resolved_t4_syms.split(",") if s.strip()])
+
+        # Dynamic key tied to preset_universe forces immediate update on index selection change!
         custom_strategy_symbols = st.text_area(
-            f"Stocks in Selected Index Basket ({len(resolved_t4_syms.split(','))} symbols loaded — editable):",
+            f"✅ {sym_count_t4} Stocks Loaded for [{preset_universe}] (Editable):",
             value=resolved_t4_syms,
-            height=95
+            height=95,
+            key=f"t4_syms_{preset_universe}"
         )
 
     with st.expander("⚙️ Customize Strategy Filter Thresholds", expanded=False):
@@ -647,10 +659,10 @@ with tab4:
         max_dist_52w = s3.slider("Max Distance from 52W High (%)", 2, 35, 15, 1)
         min_roe = s4.slider("Min ROE (%)", 0, 40, 12, 1)
 
-    if st.button("🎯 Run NSE / BSE Index Basket Screener Now", type="primary"):
+    if st.button(f"🎯 Run Strategy Screener on {preset_universe.split('(')[0].strip()}", type="primary", key="btn_t4_scan"):
         sym_list = [s.strip() for s in custom_strategy_symbols.split(",") if s.strip()]
         strategy_rows = []
-        prog_bar = st.progress(0, text="Scanning NSE/BSE index constituents...")
+        prog_bar = st.progress(0, text=f"Scanning {len(sym_list)} stocks in {preset_universe}...")
 
         for i, sym in enumerate(sym_list):
             try:
@@ -666,7 +678,6 @@ with tab4:
                     high_52w = info.get("fiftyTwoWeekHigh") or hist['High'].max()
                     dist_from_high_pct = ((high_52w - cmp_price) / high_52w) * 100 if high_52w else 99.0
 
-                    # Calculate recent 5-day volume inflow %
                     recent = hist.tail(5)
                     hl_r = (recent['High'] - recent['Low']).replace(0, np.nan)
                     b_r = ((recent['Close'] - recent['Low']) / hl_r).fillna(0.5).clip(0, 1)
@@ -718,5 +729,5 @@ with tab4:
                 df_strat = df_strat[df_strat["_is_canslim"] == True].sort_values(by="5D Buy Inflow (%)", ascending=False)
 
             display_cols = [c for c in df_strat.columns if not c.startswith("_")]
-            st.success(f"Matched **{len(df_strat)}** stocks/indices from **{preset_universe}**")
+            st.success(f"Matched **{len(df_strat)}** stocks from **{preset_universe}**")
             st.dataframe(df_strat[display_cols], use_container_width=True, hide_index=True)
