@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
 import urllib.parse
 import gzip
@@ -13,13 +13,9 @@ import io
 st.set_page_config(page_title="NSE & BSE 360° Upstox Pro Terminal", layout="wide")
 
 # ==============================================================================
-# 0. PRE-CONFIGURED UPSTOX EXTENDED API TOKEN
+# 0. OPTIONAL UPSTOX TOKEN CONFIGURATION
 # ==============================================================================
-DEFAULT_UPSTOX_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ."
-    "eyJzdWIiOiI3SkI1NEwiLCJqdGkiOiI2YWY5OTU5ZTk0MGI1ZTc2ZDBhZTkzYjgiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6ZmFsc2UsImlzRXh0ZW5kZWQiOnRydWUsImlhdCI6MTc5NDc0MTY2MiwiaXNzIjoidWRhcGktZ2F0ZXdheS1zZXJ2aWNlIiwiZXhwIjoxODI2MzE2MDAwfQ."
-    "S_UNBE3KkJIFXH7kNbsSK1Sae6MBh9ad-vp8sgnrxKA"
-)
+DEFAULT_UPSTOX_TOKEN = ""
 
 # ==============================================================================
 # 1. VERIFIED NSE & BSE CATALOG + BUILT-IN UPSTOX INSTRUMENT KEY DIRECTORY
@@ -113,7 +109,7 @@ INDEX_GROUPS = {
 }
 
 # ==============================================================================
-# 2. UPSTOX API v2 ENGINE (PRE-LOADED EXTENDED TOKEN + WEEKEND INTRADAY RESAMPLER)
+# 2. UPSTOX API v2 ENGINE (CONFIGURED TOKEN + WEEKEND INTRADAY RESAMPLER)
 # ==============================================================================
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -345,9 +341,12 @@ if "upstox_token" not in st.session_state:
     st.session_state["upstox_token"] = clean_token(secret_token) or DEFAULT_UPSTOX_TOKEN
 
 st.sidebar.header("⚡ Upstox Live API Feed")
-st.sidebar.success("🟢 Upstox Extended Token Active (Client: 7JB54L)")
+if st.session_state["upstox_token"]:
+    st.sidebar.success("🟢 Upstox access token configured")
+else:
+    st.sidebar.info("Add an Upstox token below or set UPSTOX_ACCESS_TOKEN in Streamlit secrets.")
 
-with st.sidebar.expander("🔑 Change or View Upstox Token", expanded=False):
+with st.sidebar.expander("🔑 Configure Upstox Token", expanded=False):
     user_tok = st.text_input(
         "Upstox Access / Extended Token:",
         value=st.session_state["upstox_token"],
@@ -413,8 +412,216 @@ overlays = st.sidebar.multiselect(
 
 refresh_rate = st.sidebar.slider("6. Auto-Refresh (Seconds):", 5, 120, 15)
 
+# ============================================================================== 
+# 5. PRE-MARKET NIFTY OUTLOOK AND NIFTY 50 SWING SCANNER
+# ============================================================================== 
+
+def fetch_nifty_daily_history():
+    """Load NIFTY 50 daily candles, preferring the configured Upstox feed."""
+    history = pd.DataFrame()
+    nifty_key = CORE_UPSTOX_KEYS.get("^NSEI")
+    if active_token and nifty_key:
+        history = fetch_upstox_candles(nifty_key, "6mo", "1d", active_token)
+    if history is None or history.empty:
+        history, _ = fetch_yf_price_history("^NSEI", "6mo", "1d")
+    return history
+
+
+def completed_daily_history(history):
+    """Exclude today's unfinished daily candle during the NSE session."""
+    if history is None or history.empty:
+        return pd.DataFrame()
+    result = history.copy()
+    india_timezone = timezone(timedelta(hours=5, minutes=30))
+    market_now = datetime.now(india_timezone)
+    last_bar_date = pd.Timestamp(result.index[-1]).date()
+    minutes_now = market_now.hour * 60 + market_now.minute
+    if last_bar_date == market_now.date() and minutes_now < (15 * 60 + 45) and len(result) > 1:
+        result = result.iloc[:-1]
+    return result.dropna(subset=["Open", "High", "Low", "Close"])
+
+
+def swing_snapshot(history):
+    """Calculate a compact daily trend, momentum, volume, and ATR snapshot."""
+    if history is None or history.empty:
+        return None
+    bars = history.dropna(subset=["Open", "High", "Low", "Close"]).copy()
+    if len(bars) < 55:
+        return None
+
+    close = bars["Close"].astype(float)
+    high = bars["High"].astype(float)
+    low = bars["Low"].astype(float)
+    volume = bars["Volume"].fillna(0).astype(float)
+    price = float(close.iloc[-1])
+    sma20 = float(close.rolling(20).mean().iloc[-1])
+    sma50 = float(close.rolling(50).mean().iloc[-1])
+
+    change = close.diff()
+    avg_gain = change.clip(lower=0).rolling(14).mean().iloc[-1]
+    avg_loss = (-change.clip(upper=0)).rolling(14).mean().iloc[-1]
+    if pd.isna(avg_gain) or pd.isna(avg_loss):
+        rsi = 50.0
+    elif avg_loss == 0:
+        rsi = 100.0 if avg_gain > 0 else 50.0
+    else:
+        rsi = float(100 - (100 / (1 + (avg_gain / avg_loss))))
+
+    previous_close = close.shift(1)
+    true_range = pd.concat(
+        [(high - low), (high - previous_close).abs(), (low - previous_close).abs()],
+        axis=1,
+    ).max(axis=1)
+    atr14 = float(true_range.rolling(14).mean().iloc[-1])
+    prior_20d_high = float(high.iloc[-21:-1].max())
+    prior_20d_volume = float(volume.iloc[-21:-1].mean())
+    relative_volume = float(volume.iloc[-1] / prior_20d_volume) if prior_20d_volume > 0 else 0.0
+    return_5d = float((price / close.iloc[-6] - 1) * 100) if close.iloc[-6] else 0.0
+
+    trend_ok = price > sma20 > sma50
+    momentum_ok = 50 <= rsi <= 70
+    breakout = price > prior_20d_high
+    if trend_ok and momentum_ok and breakout and relative_volume >= 1.2:
+        signal, rank = "Breakout + volume", 4
+    elif trend_ok and momentum_ok and breakout:
+        signal, rank = "Breakout", 3
+    elif trend_ok and momentum_ok:
+        signal, rank = "Uptrend", 2
+    elif price > sma50 and rsi >= 45:
+        signal, rank = "Watch", 1
+    else:
+        signal, rank = "No long setup", 0
+
+    stop = max(0.0, price - 1.5 * atr14) if pd.notna(atr14) else None
+    target = price + 3 * atr14 if pd.notna(atr14) else None
+    return {
+        "Price (₹)": price,
+        "5D Change (%)": return_5d,
+        "20 DMA (₹)": sma20,
+        "50 DMA (₹)": sma50,
+        "RSI (14)": rsi,
+        "Rel. Volume (20D)": relative_volume,
+        "20D Breakout Level (₹)": prior_20d_high,
+        "ATR (14)": atr14,
+        "Indicative Stop (₹)": stop,
+        "Indicative 2R Target (₹)": target,
+        "Swing Setup": signal,
+        "_rank": rank,
+    }
+
+
+def render_premarket_nifty_panel():
+    st.header("🌄 Pre-market NIFTY & Swing")
+    st.caption(
+        "NIFTY daily bars use Upstox when configured, otherwise Yahoo Finance. "
+        "Enter the pre-open indicative value from your exchange or market-data screen; "
+        "the existing feeds do not provide a dependable NIFTY pre-open IEP."
+    )
+    nifty_history = completed_daily_history(fetch_nifty_daily_history())
+    if nifty_history.empty or len(nifty_history) < 2:
+        st.warning("NIFTY daily history is not available right now.")
+        return
+
+    last = nifty_history.iloc[-1]
+    prev_close = float(last["Close"])
+    prev_high = float(last["High"])
+    prev_low = float(last["Low"])
+    bar_date = pd.Timestamp(nifty_history.index[-1]).strftime("%d %b %Y")
+    pivot = (prev_high + prev_low + prev_close) / 3
+    resistance_1 = 2 * pivot - prev_low
+    support_1 = 2 * pivot - prev_high
+    close_series = nifty_history["Close"].astype(float)
+    true_range = pd.concat(
+        [
+            (nifty_history["High"] - nifty_history["Low"]),
+            (nifty_history["High"] - close_series.shift(1)).abs(),
+            (nifty_history["Low"] - close_series.shift(1)).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    atr14 = float(true_range.rolling(14, min_periods=1).mean().iloc[-1])
+    sma20 = float(close_series.rolling(20, min_periods=1).mean().iloc[-1])
+    sma50 = float(close_series.rolling(50, min_periods=1).mean().iloc[-1])
+
+    left, right = st.columns([1, 2])
+    with left:
+        reference_kind = st.selectbox(
+            "Pre-market reference",
+            ["NSE NIFTY pre-open indicative value", "GIFT NIFTY indicative value"],
+            key="nifty_premarket_reference_kind",
+        )
+        indicative_level = st.number_input(
+            "Indicative level (₹; enter 0 if unavailable)",
+            min_value=0.0,
+            value=0.0,
+            step=1.0,
+            key="nifty_premarket_level",
+        )
+        if reference_kind.startswith("GIFT"):
+            st.caption("GIFT NIFTY is a futures reference, so its basis can make the implied gap differ from the eventual NIFTY open.")
+    with right:
+        st.markdown(f"**Reference session:** {bar_date} · Previous close: ₹{prev_close:,.2f}")
+        if indicative_level > 0:
+            gap_points = indicative_level - prev_close
+            gap_pct = gap_points / prev_close * 100 if prev_close else 0.0
+            if gap_pct >= 0.25:
+                gap_read = "Indicative gap up"
+            elif gap_pct <= -0.25:
+                gap_read = "Indicative gap down"
+            else:
+                gap_read = "Near-flat indication"
+            st.metric("Indicative gap vs previous close", f"{gap_pct:+.2f}%", f"{gap_points:+,.2f} points · {gap_read}")
+        else:
+            st.info("Add a pre-open indicative level to calculate the gap. The live spot quote alone does not confirm the pre-open IEP.")
+
+    n1, n2, n3, n4, n5 = st.columns(5)
+    n1.metric("Previous NIFTY close", f"₹{prev_close:,.2f}")
+    n2.metric("Previous session range", f"₹{prev_low:,.0f}–₹{prev_high:,.0f}")
+    n3.metric("Pivot / S1 / R1", f"{pivot:,.0f} / {support_1:,.0f} / {resistance_1:,.0f}")
+    n4.metric("20 / 50 DMA", f"{sma20:,.0f} / {sma50:,.0f}")
+    n5.metric("ATR (14, points)", f"{atr14:,.1f}")
+    st.caption("Use the prior-session range and pivot as reference levels. Pre-open indications can change before the regular session; wait for price confirmation.")
+
+    st.subheader("NIFTY 50 swing screen")
+    st.caption("Daily trend screen: price above the 20 DMA with the 20 DMA above the 50 DMA, RSI 50–70, 20-session breakout, and relative volume. Stop and target are volatility-based reference levels (1.5× ATR and 2R), not orders.")
+    if st.button("Scan all NIFTY 50 constituents", type="primary", key="scan_nifty50_swing"):
+        stocks = INDEX_GROUPS.get("🇮🇳 NSE NIFTY 50 (50 Stocks)", [])
+        scan_rows = []
+        progress = st.progress(0)
+        for i, symbol in enumerate(stocks):
+            try:
+                history = pd.DataFrame()
+                instrument_key = UPSTOX_INST_MAP.get(symbol)
+                if active_token and instrument_key:
+                    history = fetch_upstox_candles(instrument_key, "6mo", "1d", active_token)
+                if history is None or history.empty:
+                    history, _ = fetch_yf_price_history(f"{symbol}.NS", "6mo", "1d")
+                snapshot = swing_snapshot(completed_daily_history(history))
+                if snapshot:
+                    snapshot["Symbol"] = symbol
+                    snapshot["Company"] = COMPANY_NAMES.get(symbol, symbol)
+                    scan_rows.append(snapshot)
+            except Exception:
+                pass
+            progress.progress((i + 1) / max(len(stocks), 1))
+        progress.empty()
+        st.session_state["nifty50_swing_scan_rows"] = scan_rows
+
+    scan_rows = st.session_state.get("nifty50_swing_scan_rows", [])
+    if scan_rows:
+        result = pd.DataFrame(scan_rows).sort_values(
+            ["_rank", "5D Change (%)"], ascending=[False, False]
+        ).drop(columns=["_rank"])
+        st.dataframe(result, use_container_width=True, hide_index=True)
+        st.caption(f"Showing {len(result)} symbols with enough daily history. Prices are from the latest available daily bar and may be delayed; this screen is informational, not a trade recommendation.")
+    elif "nifty50_swing_scan_rows" in st.session_state:
+        st.warning("No NIFTY 50 daily history was returned for the swing scan. Check the market-data connection and try again.")
+
+
+render_premarket_nifty_panel()
+
 # ==============================================================================
-# 5. MAIN 360° DASHBOARD (UPSTOX LIVE ORDER BOOK + CANDLES + FUNDAMENTALS)
+# 6. MAIN 360° DASHBOARD (UPSTOX LIVE ORDER BOOK + CANDLES + FUNDAMENTALS)
 # ==============================================================================
 st.title(f"🇮🇳 {company_name} ({raw_symbol})")
 
@@ -426,7 +633,7 @@ def render_hybrid_terminal():
     used_fallback = False
     data_source_badge = "Standard Market Feed"
 
-    # --- 1. FETCH FROM UPSTOX API v2 USING EMBEDDED TOKEN ---
+    # --- 1. FETCH FROM UPSTOX API v2 USING CONFIGURED TOKEN ---
     if active_token and upstox_inst_key:
         up_quote, up_err = fetch_upstox_live_quote(upstox_inst_key, active_token)
         df = fetch_upstox_candles(upstox_inst_key, period, interval, active_token)
@@ -755,3 +962,4 @@ with st.expander(f"🔍 Scan & Compare All Peer Stocks in [{selected_group}]", e
         prog.empty()
         if rows:
             st.dataframe(pd.DataFrame(rows).sort_values(by="5D Net Flow (₹ Cr)", ascending=False), use_container_width=True, hide_index=True)
+
